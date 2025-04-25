@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STAT Demos – Korrelationen</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        #canvas {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1;
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            background: #fff;
+            cursor: crosshair;
+        }
+
+        #result {
+            margin-top: 30px;
+            margin-bottom: 30px;
+            font-weight: bold;
+            font-size: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .button-group {
+            margin-top: 15px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .checkboxes {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        @media (min-width: 500px) {
+            .checkboxes {
+                flex-direction: row;
+                justify-content: center;
+            }
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>STAT Demos – Korrelationen</h1>
+    <h2>Punkte setzen & Korrelationen berechnen</h2>
+
+    <div id="result"></div>
+    <canvas id="canvas"></canvas>
+
+    <div class="checkboxes">
+        <label><input type="checkbox" id="showRegression" onchange="draw()"> Regressionslinie anzeigen</label>
+        <label><input type="checkbox" id="showMeanLines" onchange="draw()"> Mittelwertlinien anzeigen</label>
+        <label><input type="checkbox" id="showResiduals" onchange="draw()"> Residuen anzeigen</label>
+    </div>
+
+    <div class="button-group">
+        <button onclick="clearPoints()">Alle Punkte löschen</button>
+    </div>
+
+    <script>
+        // Globale Variablen und Setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const resultDiv = document.getElementById('result');
+
+        const points = [];
+        const radius = 6;
+        let draggingPoint = null;
+
+        // Größe des Canvas an Fenster anpassen
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            draw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Zeichenfunktionen
+        function draw() {
+            clearCanvas();
+
+            if (points.length >= 2) {
+                if (document.getElementById('showMeanLines').checked) drawMeanLines();
+                if (document.getElementById('showRegression').checked) drawRegressionLine();
+                if (document.getElementById('showResiduals').checked) drawResiduals();
+            }
+
+            drawPoints();
+            calculateCorrelations();
+        }
+
+        // Canvas löschen
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Punkte zeichnen
+        function drawPoints() {
+            ctx.fillStyle = '#007bff';
+            for (const p of points) {
+                const x = p.xRel * canvas.width;
+                const y = p.yRel * canvas.height;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Mittelwertlinien zeichnen
+        function drawMeanLines() {
+            const { meanXRel, meanYRel } = calculateMeans();
+            const meanX = meanXRel * canvas.width;
+            const meanY = (1 - meanYRel) * canvas.height;
+
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = 'gray';
+
+            ctx.beginPath();
+            ctx.moveTo(meanX, 0);
+            ctx.lineTo(meanX, canvas.height);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(0, meanY);
+            ctx.lineTo(canvas.width, meanY);
+            ctx.stroke();
+        }
+
+        // Regressionslinie zeichnen
+        function drawRegressionLine() {
+            const { sumX, sumY, sumXY, sumX2 } = calculateSums();
+            const n = points.length;
+            const meanX = sumX / n;
+            const meanY = sumY / n;
+
+            const b = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX ** 2);
+            const a = meanY - b * meanX;
+
+            const x1 = 0;
+            const y1 = a + b * x1;
+            const x2 = 1;
+            const y2 = a + b * x2;
+
+            ctx.setLineDash([]);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(x1 * canvas.width, (1 - y1) * canvas.height);
+            ctx.lineTo(x2 * canvas.width, (1 - y2) * canvas.height);
+            ctx.stroke();
+
+            ctx.lineWidth = 1;
+        }
+
+        // Residuen zeichnen
+        function drawResiduals() {
+            const { sumX, sumY, sumXY, sumX2 } = calculateSums();
+            const n = points.length;
+            const meanX = sumX / n;
+            const meanY = sumY / n;
+
+            const b = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX ** 2);
+            const a = meanY - b * meanX;
+
+            ctx.strokeStyle = 'green';
+            ctx.setLineDash([3, 3]);
+
+            for (const p of points) {
+                const x = p.xRel;
+                const y = 1 - p.yRel;
+                const yHat = a + b * x;
+
+                const px = x * canvas.width;
+                const py = (1 - y) * canvas.height;
+                const pyHat = (1 - yHat) * canvas.height;
+
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(px, pyHat);
+                ctx.stroke();
+            }
+
+            ctx.setLineDash([]);
+        }
+
+        // Mathematische Hilfsfunktionen
+        function calculateMeans() {
+            const meanX = points.reduce((sum, p) => sum + p.xRel, 0) / points.length;
+            const meanY = points.reduce((sum, p) => sum + (1 - p.yRel), 0) / points.length;
+            return { meanXRel: meanX, meanYRel: meanY };
+        }
+
+        function calculateSums() {
+            let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+            for (const p of points) {
+                const x = p.xRel;
+                const y = 1 - p.yRel;
+                sumX += x;
+                sumY += y;
+                sumXY += x * y;
+                sumX2 += x * x;
+                sumY2 += y * y;
+            }
+            return { sumX, sumY, sumXY, sumX2, sumY2 };
+        }
+
+        // Korrelationskoeffizienten berechnen
+        function calculateCorrelations() {
+            const n = points.length;
+            if (n < 2) {
+                resultDiv.innerText = "Mindestens 2 Punkte nötig.";
+                return;
+            }
+
+            const { sumX, sumY, sumXY, sumX2, sumY2 } = calculateSums();
+            const numerator = n * sumXY - sumX * sumY;
+            const denominator = Math.sqrt((n * sumX2 - sumX ** 2) * (n * sumY2 - sumY ** 2));
+            const r = denominator === 0 ? 0 : numerator / denominator;
+
+            const xRanks = rank(points.map(p => p.xRel));
+            const yRanks = rank(points.map(p => 1 - p.yRel));
+            let d2sum = 0;
+            for (let i = 0; i < n; i++) {
+                const d = xRanks[i] - yRanks[i];
+                d2sum += d * d;
+            }
+            const rho = 1 - (6 * d2sum) / (n * (n * n - 1));
+
+            resultDiv.innerHTML = `
+            Pearson-Korrelationskoeffizient (r): <strong>${r.toFixed(4)}</strong><br>
+            Spearman-Rangkorrelation (ρ): <strong>${rho.toFixed(4)}</strong>
+        `;
+        }
+
+        // Bestimmung der Ränge
+        function rank(arr) {
+            const sorted = arr.map((v, i) => ({ value: v, index: i }))
+                .sort((a, b) => a.value - b.value);
+            const ranks = new Array(arr.length);
+            let i = 0;
+            while (i < sorted.length) {
+                let start = i;
+                let sumRanks = 0;
+                while (i < sorted.length && sorted[i].value === sorted[start].value) {
+                    sumRanks += i + 1;
+                    i++;
+                }
+                const avgRank = sumRanks / (i - start);
+                for (let j = start; j < i; j++) {
+                    ranks[sorted[j].index] = avgRank;
+                }
+            }
+            return ranks;
+        }
+
+        // Mausinteraktion
+        function getPointAt(x, y) {
+            return points.find(p => {
+                const px = p.xRel * canvas.width;
+                const py = p.yRel * canvas.height;
+                return Math.hypot(px - x, py - y) < radius;
+            });
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        canvas.addEventListener('click', (e) => {
+            const { x, y } = getMousePos(e);
+            if (!getPointAt(x, y)) {
+                points.push({ xRel: x / canvas.width, yRel: y / canvas.height });
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            const { x, y } = getMousePos(e);
+            draggingPoint = getPointAt(x, y);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (draggingPoint) {
+                const { x, y } = getMousePos(e);
+                draggingPoint.xRel = x / canvas.width;
+                draggingPoint.yRel = y / canvas.height;
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            draggingPoint = null;
+        });
+
+        // Punkte löschen
+        function clearPoints() {
+            points.length = 0;
+            draw();
+            resultDiv.innerText = '';
+        }
+    </script>
+</body>
+</html>
