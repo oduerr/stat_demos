@@ -82,6 +82,7 @@
     </div>
 
     <div class="button-group">
+        <button onclick="removeLastPoint()">Letzten Punkt entfernen</button>
         <button onclick="clearPoints()">Alle Punkte löschen</button>
     </div>
 
@@ -109,6 +110,7 @@
         // Zeichenfunktionen
         function draw() {
             clearCanvas();
+            drawCoordinateSystem();
 
             if (points.length >= 2) {
                 if (document.getElementById('showMeanLines').checked) drawMeanLines();
@@ -118,6 +120,28 @@
 
             drawPoints();
             calculateCorrelations();
+        }
+
+        // Gitternetzlinien zeichnen
+        function drawCoordinateSystem() {
+            const steps = 10;
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 2]);
+
+            for (let i = 0; i <= steps; i++) {
+                const posX = (i / steps) * canvas.width;
+                const posY = (i / steps) * canvas.height;
+
+                ctx.beginPath();
+                ctx.moveTo(posX, 0);
+                ctx.lineTo(posX, canvas.height);
+                ctx.moveTo(0, posY);
+                ctx.lineTo(canvas.width, posY);
+                ctx.stroke();
+            }
+
+            ctx.setLineDash([]);
         }
 
         // Canvas löschen
@@ -333,6 +357,15 @@
             points.length = 0;
             draw();
             resultDiv.innerText = '';
+        }
+
+        // Letzten Punkt löschen
+        function removeLastPoint() {
+            if (points.length > 0) {
+                points.pop();
+                draw();
+                calculateCorrelations();
+            }
         }
     </script>
 </body>
