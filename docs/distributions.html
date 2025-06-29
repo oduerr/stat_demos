@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STAT Demos – Wahrscheinlichkeitsverteilungen</title>
+    <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        h1 {
+            margin-bottom: 5px;
+        }
+
+        #distribution {
+            padding: 6px 10px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        #stats {
+            margin: 20px 0 10px 0;
+            font-weight: bold;
+            font-size: 18px;
+            line-height: 1.5;
+            color: #333;
+        }
+
+        #plot {
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            margin: 0 auto 30px auto;
+            background: #fff;
+            border: 1px solid #ccc;
+        }
+
+        #controls {
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: left;
+        }
+
+        .slider-container {
+            margin: 20px 0;
+        }
+
+        .slider-container label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .slider-container input[type="range"] {
+            width: 100%;
+            height: 25px;
+        }
+
+        .tick-container {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8em;
+            padding: 0 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>STAT Demos – Wahrscheinlichkeitsverteilungen</h1>
+    <h2>Verteilung auswählen:</h2>
+    <select id="distribution">
+        <option value="normal">Normalverteilung</option>
+        <option value="exponential">Exponentialverteilung</option>
+        <option value="poisson">Poissonverteilung</option>
+        <option value="binomial">Binomialverteilung</option>
+        <option value="uniform">Uniformverteilung</option>
+        <option value="studentt">Student-t-Verteilung</option>
+    </select>
+
+    <div id="stats"></div>
+    <div id="plot"></div>
+    <div id="controls"></div>
+
+    <script>
+        const controlsDiv = document.getElementById("controls");
+        const statsDiv = document.getElementById("stats");
+        const distributionSelector = document.getElementById("distribution");
+
+        const createSlider = (id, label, min, max, step, value) => {
+            const container = document.createElement("div");
+            container.className = "slider-container";
+
+            const lbl = document.createElement("label");
+            lbl.textContent = `${label}: ${value}`;
+            lbl.htmlFor = id;
+
+            const slider = document.createElement("input");
+            slider.type = "range";
+            slider.id = id;
+            slider.min = min;
+            slider.max = max;
+            slider.step = step;
+            slider.value = value;
+
+            slider.oninput = () => {
+                lbl.textContent = `${label}: ${slider.value}`;
+                updatePlot();
+            };
+
+            const ticks = document.createElement("div");
+            ticks.className = "tick-container";
+            const numTicks = 5;
+            for (let i = 0; i <= numTicks; i++) {
+                const tickVal = min + (i * (max - min)) / numTicks;
+                const tick = document.createElement("span");
+                tick.textContent = tickVal.toFixed(2);
+                ticks.appendChild(tick);
+            }
+
+            container.appendChild(lbl);
+            container.appendChild(slider);
+            container.appendChild(ticks);
+            controlsDiv.appendChild(container);
+        };
+
+        const updateControls = () => {
+            controlsDiv.innerHTML = "";
+            const dist = distributionSelector.value;
+            if (dist === "normal") {
+                createSlider("mu", "Erwartungswert (μ)", -10, 10, 0.1, 0);
+                createSlider("sigma", "Standardabweichung (σ)", 0.1, 10, 0.1, 1);
+            } else if (dist === "exponential") {
+                createSlider("lambda", "λ (Rate)", 0.1, 10, 0.1, 1);
+            } else if (dist === "poisson") {
+                createSlider("lambda", "λ (Erwartungswert)", 1, 20, 1, 5);
+            } else if (dist === "binomial") {
+                createSlider("n", "n (Versuche)", 1, 100, 1, 20);
+                createSlider("p", "p (Erfolg)", 0, 1, 0.01, 0.5);
+            } else if (dist === "uniform") {
+                createSlider("a", "a (min)", -10, 10, 0.1, 0);
+                createSlider("b", "b (max)", -10, 20, 0.1, 10);
+            } else if (dist === "studentt") {
+                createSlider("df", "Freiheitsgrade (df)", 1, 30, 1, 5);
+            }
+            updatePlot();
+        };
+
+        const updatePlot = () => {
+            const dist = distributionSelector.value;
+            let x = [], y = [], mu, sigma2, sigma, layoutAxes = {};
+
+            const get = id => parseFloat(document.getElementById(id)?.value);
+
+            if (dist === "normal") {
+                const muVal = get("mu"), sigmaVal = get("sigma");
+                mu = muVal;
+                sigma2 = sigmaVal ** 2;
+                sigma = sigmaVal;
+                x = Array.from({ length: 500 }, (_, i) => mu - 4 * sigma + i * (8 * sigma / 500));
+                y = x.map(xi => (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * ((xi - mu) / sigma) ** 2));
+                layoutAxes = { xaxis: { range: [-12.5, 12.5], fixedrange: true }, yaxis: { autorange: true } };
+            } else if (dist === "exponential") {
+                const lambda = get("lambda");
+                mu = 1 / lambda;
+                sigma2 = 1 / (lambda ** 2);
+                sigma = Math.sqrt(sigma2);
+                x = Array.from({ length: 500 }, (_, i) => i * (10 / 500));
+                y = x.map(xi => lambda * Math.exp(-lambda * xi));
+                layoutAxes = { xaxis: { range: [0, 10], fixedrange: true }, yaxis: { autorange: true } };
+            } else if (dist === "poisson") {
+                const lambda = get("lambda");
+                mu = lambda;
+                sigma2 = lambda;
+                sigma = Math.sqrt(lambda);
+                x = Array.from({ length: 60 }, (_, i) => i);
+                y = x.map(k => (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k));
+                layoutAxes = { xaxis: { range: [0, 60], fixedrange: true }, yaxis: { autorange: true } };
+            } else if (dist === "binomial") {
+                const n = get("n"), p = get("p");
+                mu = n * p;
+                sigma2 = n * p * (1 - p);
+                sigma = Math.sqrt(sigma2);
+                x = Array.from({ length: n + 1 }, (_, i) => i);
+                y = x.map(k => binomialPMF(n, k, p));
+                layoutAxes = { xaxis: { range: [0, 100], fixedrange: true }, yaxis: { autorange: true } };
+            } else if (dist === "uniform") {
+                const a = get("a"), b = get("b");
+                if (a >= b) return;
+                mu = (a + b) / 2;
+                sigma2 = ((b - a) ** 2) / 12;
+                sigma = Math.sqrt(sigma2);
+                x = Array.from({ length: 500 }, (_, i) => a + i * (b - a) / 500);
+                y = x.map(xi => {
+                    if (xi === a || xi === b) return 0;
+                    return 1 / (b - a);
+                });
+                x.unshift(a, a);
+                y.unshift(0, 1 / (b - a));
+                x.push(b, b);
+                y.push(1 / (b - a), 0);
+                layoutAxes = { xaxis: { range: [-12.5, 22.5], fixedrange: true }, yaxis: { autorange: true } };
+            } else if (dist === "studentt") {
+                const df = get("df");
+                mu = 0;
+                sigma2 = df > 2 ? df / (df - 2) : Infinity;
+                sigma = Math.sqrt(sigma2);
+                x = Array.from({ length: 500 }, (_, i) => -5 + i * (10 / 500));
+                y = x.map(xi => jStat.studentt.pdf(xi, df));
+                layoutAxes = { xaxis: { range: [-5, 5], fixedrange: true }, yaxis: { range: [0, 0.5], fixedrange: true } };
+            }
+
+            const trace = {
+                x, y,
+                type: (dist === "poisson" || dist === "binomial") ? 'bar' : 'scatter',
+                mode: 'lines',
+                name: dist
+            };
+
+            const layout = {
+                margin: { l: 60, r: 30, t: 10, b: 50 },
+                xaxis: { ...layoutAxes.xaxis, title: 'x' },
+                yaxis: {
+                    ...layoutAxes.yaxis,
+                    title: {
+                        text: (dist === 'normal' || dist === 'exponential' || dist === 'uniform' || dist === 'studentt')
+                            ? 'Wahrscheinlichkeitsdichte'
+                            : 'Wahrscheinlichkeit',
+                        font: { size: 16, color: '#333' }
+                    },
+                    tickfont: { size: 14, color: '#333' }
+                },
+                shapes: [
+                    { type: 'line', x0: mu, x1: mu, y0: 0, y1: Math.max(...y), line: { color: 'red', dash: 'dash' } },
+                    { type: 'rect', x0: mu - sigma, x1: mu + sigma, y0: 0, y1: Math.max(...y), fillcolor: 'rgba(255,0,0,0.1)', line: { width: 0 } }
+                ]
+            };
+
+            Plotly.newPlot('plot', [trace], layout, { displayModeBar: false, responsive: true });
+
+            statsDiv.innerHTML = `
+        <p><strong>Erwartungswert (μ):</strong> ${mu.toFixed(3)}</p>
+        <p><strong>Varianz:</strong> ${sigma2.toFixed(3)}</p>
+        <p><strong>Standardabweichung (σ):</strong> ${sigma.toFixed(3)}</p>
+      `;
+        };
+
+        const factorial = n => (n <= 1 ? 1 : n * factorial(n - 1));
+
+        const binomialPMF = (n, k, p) => {
+            return factorial(n) / (factorial(k) * factorial(n - k)) * Math.pow(p, k) * Math.pow(1 - p, n - k);
+        };
+
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/jstat@latest/dist/jstat.min.js";
+        script.onload = () => updateControls();
+        document.head.appendChild(script);
+
+        distributionSelector.addEventListener("change", updateControls);
+
+        window.addEventListener("resize", () => {
+            Plotly.Plots.resize(document.getElementById("plot"));
+        });
+    </script>
+</body>
+</html>
