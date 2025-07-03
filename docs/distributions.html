@@ -13,14 +13,17 @@
             background: #f9f9f9;
         }
 
-        h1 {
-            margin-bottom: 5px;
+        #distribution-container {
+            max-width: 400px;
+            margin: 10px auto 30px auto;
+            text-align: center;
         }
 
         #distribution {
+            width: 400px;
             padding: 6px 10px;
             font-size: 16px;
-            margin-top: 10px;
+            margin-top: 0;
         }
 
         #stats {
@@ -40,10 +43,36 @@
             border: 1px solid #ccc;
         }
 
+        #top-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+            margin: 20px auto;
+        }
+
         #controls {
-            max-width: 600px;
-            margin: 0 auto;
+            flex: 0 0 70%;
+            max-width: 70%;
+            padding-right: 20px;
+            box-sizing: border-box;
             text-align: left;
+        }
+
+        #right-panel {
+            flex: 0 0 30%;
+            max-width: 30%;
+            padding-left: 20px;
+            box-sizing: border-box;
+            text-align: left;
+        }
+
+        #controls {
+            padding-right: 20px;
+        }
+
+        #right-panel {
+            padding-left: 20px;
         }
 
         .slider-container {
@@ -67,24 +96,40 @@
             font-size: 0.8em;
             padding: 0 5px;
         }
+
+        @media (max-width: 500px) {
+            #top-section {
+                flex-direction: column;
+            }
+
+            #controls,
+            #right-panel {
+                max-width: 100%;
+                flex: 0 0 100%;
+                padding: 0;
+            }
+        }
     </style>
 </head>
 
 <body>
-    <h1>STAT Demos – Wahrscheinlichkeitsverteilungen</h1>
-    <h2>Verteilung auswählen:</h2>
+    <h2>Wahrscheinlichkeitsverteilungen</h2>
     <select id="distribution">
-        <option value="normal">Normalverteilung</option>
-        <option value="exponential">Exponentialverteilung</option>
-        <option value="poisson">Poissonverteilung</option>
         <option value="binomial">Binomialverteilung</option>
+        <option value="poisson">Poissonverteilung</option>
         <option value="uniform">Uniformverteilung</option>
+        <option value="exponential">Exponentialverteilung</option>
+        <option value="normal">Normalverteilung</option>
         <option value="studentt">Student-t-Verteilung</option>
     </select>
+    <div id="top-section">
+        <div id="controls"></div>
 
-    <div id="stats"></div>
+        <div id="right-panel">
+            <div id="stats"></div>
+        </div>
+    </div>
     <div id="plot"></div>
-    <div id="controls"></div>
 
     <script>
         const controlsDiv = document.getElementById("controls");
@@ -137,7 +182,7 @@
             } else if (dist === "exponential") {
                 createSlider("lambda", "λ (Rate)", 0.1, 10, 0.1, 1);
             } else if (dist === "poisson") {
-                createSlider("lambda", "λ (Erwartungswert)", 1, 20, 1, 5);
+                createSlider("lambda", "λ (Erwartungswert)", 1, 20, 0.1, 5);
             } else if (dist === "binomial") {
                 createSlider("n", "n (Versuche)", 1, 100, 1, 20);
                 createSlider("p", "p (Erfolg)", 0, 1, 0.01, 0.5);
@@ -221,6 +266,27 @@
                 name: dist
             };
 
+            const meanLine = {
+                x: [mu, mu],
+                y: [0, Math.max(...y)],
+                mode: 'lines',
+                name: 'Erwartungswert (μ)',
+                line: { color: 'red', dash: 'dash' },
+                showlegend: true
+            };
+
+            const stdRange = {
+                x: [mu - sigma, mu + sigma, mu + sigma, mu - sigma, mu - sigma],
+                y: [0, 0, Math.max(...y), Math.max(...y), 0],
+                fill: 'toself',
+                fillcolor: 'rgba(255,0,0,0.1)',
+                line: { color: 'rgba(255,0,0,0)' },
+                type: 'scatter',
+                mode: 'lines',
+                name: 'EW (μ) ± 1 SD (σ)',
+                showlegend: true
+            };
+
             const layout = {
                 margin: { l: 60, r: 30, t: 10, b: 50 },
                 xaxis: { ...layoutAxes.xaxis, title: 'x' },
@@ -234,13 +300,24 @@
                     },
                     tickfont: { size: 14, color: '#333' }
                 },
+                legend: {
+                    x: 1,
+                    y: 1,
+                    bgcolor: 'rgba(255,255,255,0.95)',
+                    bordercolor: '#ccc',
+                    borderwidth: 1,
+                    font: {
+                        size: 16,
+                        color: '#000'
+                    }
+                },
                 shapes: [
                     { type: 'line', x0: mu, x1: mu, y0: 0, y1: Math.max(...y), line: { color: 'red', dash: 'dash' } },
                     { type: 'rect', x0: mu - sigma, x1: mu + sigma, y0: 0, y1: Math.max(...y), fillcolor: 'rgba(255,0,0,0.1)', line: { width: 0 } }
                 ]
             };
 
-            Plotly.newPlot('plot', [trace], layout, { displayModeBar: false, responsive: true });
+            Plotly.newPlot('plot', [trace, meanLine, stdRange], layout, { displayModeBar: false, responsive: true });
 
             statsDiv.innerHTML = `
         <p><strong>Erwartungswert (μ):</strong> ${mu.toFixed(3)}</p>
