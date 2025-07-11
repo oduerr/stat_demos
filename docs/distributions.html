@@ -153,6 +153,27 @@
             slider.value = value;
 
             slider.oninput = () => {
+                if (id === "n" && slider.value < 1) {
+                    slider.value = 1;
+                }
+                if (id === "lambda" && distributionSelector.value === "exponential" && slider.value < 0.1) {
+                    slider.value = 0.1;
+                }
+                if (id === "lambda" && distributionSelector.value === "poisson" && slider.value < 0.1) {
+                    slider.value = 0.1;
+                }
+                if (id === "sigma" && slider.value < 0.1) {
+                    slider.value = 0.1;
+                }
+                if (id === "df" && slider.value < 1) {
+                    slider.value = 1;
+                }
+                lbl.textContent = `${label}: ${slider.value}`;
+                updatePlot();
+            };
+            slider.onchange = slider.oninput;
+
+            slider.oninput = () => {
                 lbl.textContent = `${label}: ${slider.value}`;
                 updatePlot();
             };
@@ -163,7 +184,7 @@
             for (let i = 0; i <= numTicks; i++) {
                 const tickVal = min + (i * (max - min)) / numTicks;
                 const tick = document.createElement("span");
-                tick.textContent = tickVal.toFixed(2);
+                tick.textContent = tickVal.toFixed(1);
                 ticks.appendChild(tick);
             }
 
@@ -178,19 +199,19 @@
             const dist = distributionSelector.value;
             if (dist === "normal") {
                 createSlider("mu", "Erwartungswert (μ)", -10, 10, 0.1, 0);
-                createSlider("sigma", "Standardabweichung (σ)", 0.1, 10, 0.1, 1);
+                createSlider("sigma", "Standardabweichung (σ)", 0, 10, 0.1, 1);
             } else if (dist === "exponential") {
-                createSlider("lambda", "λ (Rate)", 0.1, 10, 0.1, 1);
+                createSlider("lambda", "λ (Rate)", 0, 10, 0.1, 1);
             } else if (dist === "poisson") {
-                createSlider("lambda", "λ (Erwartungswert)", 1, 20, 0.1, 5);
+                createSlider("lambda", "λ (Erwartungswert)", 0, 20, 0.1, 5);
             } else if (dist === "binomial") {
-                createSlider("n", "n (Versuche)", 1, 100, 1, 20);
+                createSlider("n", "n (Versuche)", 0, 100, 1, 20);
                 createSlider("p", "p (Erfolg)", 0, 1, 0.01, 0.5);
             } else if (dist === "uniform") {
                 createSlider("a", "a (min)", -10, 10, 0.1, 0);
                 createSlider("b", "b (max)", -10, 20, 0.1, 10);
             } else if (dist === "studentt") {
-                createSlider("df", "Freiheitsgrade (df)", 1, 30, 1, 5);
+                createSlider("df", "Freiheitsgrade (df)", 0, 30, 1, 5);
             }
             updatePlot();
         };
@@ -289,7 +310,7 @@
 
             const layout = {
                 margin: { l: 60, r: 30, t: 10, b: 50 },
-                xaxis: { ...layoutAxes.xaxis, title: 'x' },
+                xaxis: { ...layoutAxes.xaxis, title: 'x', zeroline: false },
                 yaxis: {
                     ...layoutAxes.yaxis,
                     title: {
