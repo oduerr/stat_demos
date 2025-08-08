@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Linear Regression = 1-Layer Neural Network</title>
+<style>
+  :root {
+    --bg: #0f1220;
+    --panel: #171a2b;
+    --panel-2: #1f2340;
+    --text: #e6e8ef;
+    --muted: #aab0c0;
+    --accent: #7bdff2;
+    --accent-2: #f7b267;
+    --accent-3: #f79d84;
+    --grid: #2a2e4a;
+    --ok: #7ce38b;
+    --warn: #f7d774;
+    --err: #ff758f;
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: radial-gradient(1200px 800px at 10% 0%, #12162a 0%, #0b0e1a 40%, #0a0c16 100%);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 16px;
+    height: 100%;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid #242846;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.02);
+    overflow: hidden;
+    min-height: 0; /* allow children to size themselves (for grid) */
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid #242846;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00));
+  }
+
+  .card-header h2 {
+    font-size: 14px;
+    letter-spacing: 0.4px;
+    margin: 0;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .plot-wrap {
+    position: relative;
+    padding: 8px 12px 12px 12px;
+    height: calc(100% - 46px);
+  }
+
+  canvas#plot {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0));
+    border-radius: 10px;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 16px;
+    padding: 12px 14px 16px 14px;
+  }
+
+  .control {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .control label {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .control input[type="range"] {
+    width: 100%;
+  }
+
+  .pill {
+    font-variant-numeric: tabular-nums;
+    background: #0f1328;
+    color: var(--text);
+    border: 1px solid #2a2f55;
+    padding: 6px 8px;
+    border-radius: 8px;
+    min-width: 70px;
+    text-align: right;
+    font-size: 12px;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    padding: 0 14px 14px 14px;
+  }
+
+  button {
+    appearance: none;
+    background: linear-gradient(180deg, #2b335f, #262b55);
+    border: 1px solid #37407a;
+    color: #e9edff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    transition: transform 0.06s ease, box-shadow 0.2s ease, background 0.2s ease;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+  }
+
+  button.secondary {
+    background: linear-gradient(180deg, #233, #1a213b);
+    border-color: #2a314f;
+    color: #c8cde6;
+  }
+
+  button:active {
+    transform: translateY(1px);
+  }
+
+  .panel {
+    padding: 12px 14px 16px 14px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  .mse {
+    color: var(--accent-2);
+  }
+
+  .equation {
+    font-size: 14px;
+  }
+
+  .big {
+    font-size: 18px;
+  }
+
+  /* Neural network diagram area */
+  .net-wrap {
+    padding: 10px 10px 16px 10px;
+  }
+
+  svg#net {
+    width: 100%;
+    height: 320px;
+    display: block;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0));
+    border-radius: 10px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 0 10px 10px 10px;
+  }
+
+  .key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  }
+
+  .dot.data { background: var(--accent-3); }
+  .dot.pred { background: var(--accent); }
+  .dot.err { background: var(--err); }
+
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- Left: Plot and Controls -->
+    <div class="card" id="left">
+      <div class="card-header">
+        <h2>Interactive Linear Regression</h2>
+        <div class="row">
+          <span class="mono equation" id="eq">ŷ = w · x + b</span>
+        </div>
+      </div>
+      <div class="plot-wrap">
+        <canvas id="plot"></canvas>
+      </div>
+
+      <div class="legend">
+        <span class="key"><span class="dot data"></span> Data (draggable vertically)</span>
+        <span class="key"><span class="dot pred"></span> Prediction on line (ŷ)</span>
+        <span class="key"><span class="dot err" style="border-radius:2px"></span> Error (vertical)</span>
+      </div>
+
+      <div class="controls">
+        <div class="control" style="grid-column: span 2;">
+          <label for="slope">Slope (w)</label>
+          <input id="slope" type="range" min="-5" max="5" step="0.001" />
+          <span class="pill mono" id="slopeVal">0.000</span>
+        </div>
+        <div class="control" style="grid-column: span 2;">
+          <label for="intercept">Intercept (b)</label>
+          <input id="intercept" type="range" min="-10" max="10" step="0.001" />
+          <span class="pill mono" id="interceptVal">0.000</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="fitBtn">Fit Weights (Least Squares)</button>
+        <button class="secondary" id="resetBtn">Reset Points</button>
+        <div class="row" style="margin-left:auto">
+          <span class="mono">MSE:</span>
+          <span class="pill mono mse" id="mse">0.0000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Neural Network Visual -->
+    <div class="card" id="right">
+      <div class="card-header">
+        <h2>Neural Network View (No Hidden Layer)</h2>
+        <span class="mono">Single neuron: linear activation</span>
+      </div>
+      <div class="panel">
+        <div class="row">
+          <span class="mono">Weights</span>
+          <span class="mono">
+            w = <span id="wDisp">0.000</span>,
+            b = <span id="bDisp">0.000</span>
+          </span>
+        </div>
+        <div class="row big mono">
+          <span>ŷ = w · x + b</span>
+        </div>
+      </div>
+      <div class="net-wrap">
+        <!-- Simple SVG schematic: x and 1 feed into output via w and b -->
+        <svg id="net" viewBox="0 0 520 320" preserveAspectRatio="xMidYMid meet">
+          <!-- Grid background lines -->
+          <defs>
+            <linearGradient id="wire" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stop-color="#5ad1e6" />
+              <stop offset="100%" stop-color="#8fe7f7" />
+            </linearGradient>
+            <linearGradient id="wire2" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stop-color="#f2a156" />
+              <stop offset="100%" stop-color="#f9c477" />
+            </linearGradient>
+          </defs>
+
+          <!-- Input nodes -->
+          <circle cx="80" cy="100" r="24" fill="#1b2040" stroke="#2c335f" stroke-width="2" />
+          <text x="80" y="105" text-anchor="middle" fill="#b7c0e6" font-size="16" class="mono">x</text>
+
+          <circle cx="80" cy="220" r="24" fill="#1b2040" stroke="#2c335f" stroke-width="2" />
+          <text x="80" y="225" text-anchor="middle" fill="#b7c0e6" font-size="16" class="mono">1</text>
+
+          <!-- Output node -->
+          <circle cx="420" cy="160" r="28" fill="#1b2040" stroke="#2c335f" stroke-width="2" />
+          <text x="420" y="165" text-anchor="middle" fill="#b7c0e6" font-size="16" class="mono">ŷ</text>
+
+          <!-- Wires -->
+          <path d="M 104 100 C 180 100, 300 130, 392 150" stroke="url(#wire)" stroke-width="4" fill="none" />
+          <path d="M 104 220 C 180 220, 300 190, 392 170" stroke="url(#wire2)" stroke-width="4" fill="none" />
+
+          <!-- Weight labels -->
+          <rect x="210" y="86" rx="6" ry="6" width="100" height="28" fill="#0f1328" stroke="#273059" />
+          <text id="wLabel" x="260" y="105" text-anchor="middle" fill="#9fe7f6" font-size="14" class="mono">w = 0.000</text>
+
+          <rect x="210" y="206" rx="6" ry="6" width="100" height="28" fill="#0f1328" stroke="#273059" />
+          <text id="bLabel" x="260" y="225" text-anchor="middle" fill="#f9c477" font-size="14" class="mono">b = 0.000</text>
+
+          <!-- Equation card -->
+          <rect x="160" y="138" rx="10" ry="10" width="200" height="44" fill="#121636" stroke="#2a315a" />
+          <text id="eqLabel" x="260" y="166" text-anchor="middle" fill="#dbe1ff" font-size="16" class="mono">ŷ = w·x + b</text>
+        </svg>
+      </div>
+      <div class="panel">
+        <div class="mono" style="color: var(--muted); line-height: 1.45;">
+          This diagram shows a single neuron with two inputs: the feature x and a constant 1 (for bias).
+          The neuron computes a linear combination with weights w and b, exactly the same computation as linear regression.
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  // ----- Utility: format numbers -----
+  const fmt = (v, d=3) => (Math.abs(v) < 1e-12 ? 0 : v).toFixed(d);
+
+  // ----- Data and model state -----
+  // Initial fixed x positions; y is draggable
+  const data = [
+    { x: 1, y: 1.6 },
+    { x: 2, y: 2.0 },
+    { x: 3, y: 2.7 },
+    { x: 4, y: 3.8 },
+    { x: 5, y: 4.0 },
+    { x: 6, y: 5.1 },
+    { x: 7, y: 5.6 }
+  ];
+  const initialY = data.map(d => d.y);
+
+  // Model parameters (slope and intercept)
+  let w = 0;
+  let b = 0;
+
+  // Plot ranges
+  const xMin = 0, xMax = 8; // pad around 1..7
+  const yMin = 0, yMax = 8; // editable range
+
+  // Canvas and drawing
+  const canvas = document.getElementById('plot');
+  const ctx = canvas.getContext('2d');
+
+  let draggingIndex = -1;
+  let isDragging = false;
+  const pointRadius = 6; // visible radius
+  const hitRadius = 12;  // hit test radius
+
+  // Controls
+  const slopeSlider = document.getElementById('slope');
+  const interceptSlider = document.getElementById('intercept');
+  const slopeVal = document.getElementById('slopeVal');
+  const interceptVal = document.getElementById('interceptVal');
+  const mseEl = document.getElementById('mse');
+  const fitBtn = document.getElementById('fitBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  // Network labels
+  const wDisp = document.getElementById('wDisp');
+  const bDisp = document.getElementById('bDisp');
+  const wLabel = document.getElementById('wLabel');
+  const bLabel = document.getElementById('bLabel');
+  const eqLabel = document.getElementById('eqLabel');
+  const eqTop = document.getElementById('eq');
+
+  // ----- Coordinate transforms -----
+  function resizeCanvasToDisplaySize() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const { clientWidth, clientHeight } = canvas;
+    const displayWidth = Math.floor(clientWidth * dpr);
+    const displayHeight = Math.floor(clientHeight * dpr);
+    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+      canvas.width = displayWidth;
+      canvas.height = displayHeight;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // reset to CSS pixels
+  }
+
+  const padding = { left: 44, right: 16, top: 16, bottom: 36 };
+
+  function innerRect() {
+    const w = canvas.clientWidth - padding.left - padding.right;
+    const h = canvas.clientHeight - padding.top - padding.bottom;
+    return { x: padding.left, y: padding.top, w, h };
+  }
+
+  function xToPx(x) {
+    const r = innerRect();
+    return r.x + (x - xMin) / (xMax - xMin) * r.w;
+  }
+
+  function yToPx(y) {
+    const r = innerRect();
+    return r.y + (1 - (y - yMin) / (yMax - yMin)) * r.h;
+  }
+
+  function pxToY(py) {
+    const r = innerRect();
+    const t = (py - r.y) / r.h;
+    return yMin + (1 - t) * (yMax - yMin);
+  }
+
+  // ----- Math helpers -----
+  function predict(x) { return w * x + b; }
+
+  function computeMSE() {
+    const n = data.length;
+    let sse = 0;
+    for (const d of data) {
+      const err = d.y - predict(d.x);
+      sse += err * err;
+    }
+    return sse / n;
+  }
+
+  function fitLeastSquares() {
+    const n = data.length;
+    let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+    for (const d of data) {
+      sumX += d.x; sumY += d.y; sumXX += d.x * d.x; sumXY += d.x * d.y;
+    }
+    const meanX = sumX / n;
+    const meanY = sumY / n;
+    const covXY = sumXY / n - meanX * meanY;
+    const varX = sumXX / n - meanX * meanX;
+    const wHat = varX === 0 ? 0 : (covXY / varX);
+    const bHat = meanY - wHat * meanX;
+    return { w: wHat, b: bHat };
+  }
+
+  // ----- Rendering -----
+  function drawAxes() {
+    const r = innerRect();
+    ctx.save();
+    // background grid
+    ctx.fillStyle = 'rgba(255,255,255,0.01)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+    ctx.lineWidth = 1;
+
+    // y grid lines and labels
+    ctx.font = '12px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#93a0c6';
+
+    const yTicks = 8;
+    for (let i = 0; i <= yTicks; i++) {
+      const yVal = yMin + i * (yMax - yMin) / yTicks;
+      const py = yToPx(yVal);
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.moveTo(r.x, py);
+      ctx.lineTo(r.x + r.w, py);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillText(yVal.toFixed(0), r.x - 6, py);
+    }
+
+    // x grid lines and labels
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const xTicks = 8;
+    for (let i = 0; i <= xTicks; i++) {
+      const xVal = xMin + i * (xMax - xMin) / xTicks;
+      const px = xToPx(xVal);
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.moveTo(px, r.y);
+      ctx.lineTo(px, r.y + r.h);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillText(xVal.toFixed(0), px, r.y + r.h + 6);
+    }
+
+    ctx.restore();
+  }
+
+  function drawRegressionLine() {
+    const r = innerRect();
+    const yAtMin = predict(xMin);
+    const yAtMax = predict(xMax);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(xToPx(xMin), yToPx(yAtMin));
+    ctx.lineTo(xToPx(xMax), yToPx(yAtMax));
+    ctx.strokeStyle = '#7bdff2';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = 'rgba(123,223,242,0.25)';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDataAndErrors() {
+    ctx.save();
+    for (const d of data) {
+      const px = xToPx(d.x);
+      const py = yToPx(d.y);
+      const pyHat = yToPx(predict(d.x));
+
+      // error bar
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px, pyHat);
+      ctx.strokeStyle = 'rgba(255,117,143,0.7)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // predicted point on line
+      ctx.beginPath();
+      ctx.arc(px, pyHat, pointRadius - 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#7bdff2';
+      ctx.fill();
+      ctx.strokeStyle = '#5ec9da';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // actual data point (draggable)
+      ctx.beginPath();
+      ctx.arc(px, py, pointRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#f79d84';
+      ctx.fill();
+      ctx.strokeStyle = '#f4856e';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // small shadow/glow
+      ctx.save();
+      ctx.globalAlpha = 0.15;
+      ctx.beginPath();
+      ctx.arc(px, py, pointRadius + 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#f79d84';
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function render() {
+    resizeCanvasToDisplaySize();
+
+    // Clear
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+    drawAxes();
+    drawRegressionLine();
+    drawDataAndErrors();
+
+    // Update metrics and labels
+    const mse = computeMSE();
+    mseEl.textContent = (Math.round(mse * 10000) / 10000).toFixed(4);
+    slopeVal.textContent = fmt(w);
+    interceptVal.textContent = fmt(b);
+
+    wDisp.textContent = fmt(w);
+    bDisp.textContent = fmt(b);
+
+    if (wLabel) wLabel.textContent = `w = ${fmt(w)}`;
+    if (bLabel) bLabel.textContent = `b = ${fmt(b)}`;
+    if (eqLabel) eqLabel.textContent = `ŷ = ${fmt(w)} · x + ${fmt(b)}`;
+    if (eqTop) eqTop.textContent = `ŷ = ${fmt(w)} · x + ${fmt(b)}`;
+  }
+
+  // ----- Interaction: dragging points vertically -----
+  function eventToLocalPos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ev.clientX - rect.left,
+      y: ev.clientY - rect.top
+    };
+  }
+
+  function hitTestPoint(mx, my) {
+    for (let i = 0; i < data.length; i++) {
+      const px = xToPx(data[i].x);
+      const py = yToPx(data[i].y);
+      const dx = mx - px;
+      const dy = my - py;
+      if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('mousedown', (ev) => {
+    const pos = eventToLocalPos(ev);
+    const idx = hitTestPoint(pos.x, pos.y);
+    if (idx !== -1) {
+      draggingIndex = idx;
+      isDragging = true;
+      canvas.style.cursor = 'ns-resize';
+    }
+  });
+
+  window.addEventListener('mousemove', (ev) => {
+    const pos = eventToLocalPos(ev);
+    if (isDragging && draggingIndex !== -1) {
+      const newY = Math.max(yMin, Math.min(yMax, pxToY(pos.y)));
+      data[draggingIndex].y = newY;
+      render();
+    } else {
+      // Hover feedback cursor
+      const idx = hitTestPoint(pos.x, pos.y);
+      canvas.style.cursor = idx !== -1 ? 'ns-resize' : 'default';
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    draggingIndex = -1;
+    canvas.style.cursor = 'default';
+  });
+
+  // ----- Controls behavior -----
+  function setModel({ slope, intercept, fromUser=false }) {
+    if (typeof slope === 'number') w = slope;
+    if (typeof intercept === 'number') b = intercept;
+
+    // Sync sliders unless the event originated from them
+    if (!fromUser) {
+      slopeSlider.value = String(w);
+      interceptSlider.value = String(b);
+    }
+    render();
+  }
+
+  slopeSlider.addEventListener('input', (e) => {
+    setModel({ slope: parseFloat(e.target.value), intercept: b, fromUser: true });
+  });
+
+  interceptSlider.addEventListener('input', (e) => {
+    setModel({ slope: w, intercept: parseFloat(e.target.value), fromUser: true });
+  });
+
+  fitBtn.addEventListener('click', () => {
+    const { w: wHat, b: bHat } = fitLeastSquares();
+    setModel({ slope: wHat, intercept: bHat, fromUser: false });
+  });
+
+  resetBtn.addEventListener('click', () => {
+    data.forEach((d, i) => d.y = initialY[i]);
+    const { w: wHat, b: bHat } = fitLeastSquares();
+    setModel({ slope: wHat, intercept: bHat, fromUser: false });
+  });
+
+  // ----- Initialization -----
+  function init() {
+    // Initial fit for default data, and set slider ranges near fit for better UX
+    const { w: wHat, b: bHat } = fitLeastSquares();
+
+    // Expand slider ranges adaptively around initial fit
+    function expandRange(input, center, span) {
+      input.min = String(center - span);
+      input.max = String(center + span);
+    }
+    expandRange(slopeSlider, wHat, Math.max(2.5, Math.abs(wHat) + 2.5));
+    expandRange(interceptSlider, bHat, Math.max(5, Math.abs(bHat) + 5));
+
+    setModel({ slope: wHat, intercept: bHat, fromUser: false });
+
+    // Re-render on resize
+    const ro = new ResizeObserver(render);
+    ro.observe(canvas);
+    window.addEventListener('resize', render);
+
+    render();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
