@@ -145,6 +145,8 @@
     .table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; color: var(--muted); }
     .table th, .table td { text-align: right; padding: 6px 8px; border-bottom: 1px dashed rgba(148,163,184,0.18); }
     .table th:first-child, .table td:first-child { text-align: left; }
+    .table tfoot td { border-top: 1px solid rgba(148,163,184,0.25); color: var(--text); font-weight: 600; }
+    .residual-line { stroke: #f87171; stroke-opacity: 0.9; stroke-width: 2; stroke-linecap: round; }
   </style>
 </head>
 <body>
@@ -167,13 +169,18 @@
           <div class="legend" aria-hidden="true">
             <span><span class="swatch" style="background:#fbbf24"></span>Data points</span>
             <span><span class="swatch" style="background:#60a5fa"></span>Prediction line ŷ = w·x + b</span>
+            <span><span class="swatch" style="background:#f87171"></span>Residuals</span>
             <span><span class="swatch" style="background:#34d399"></span>Best-fit (after pressing Fit)</span>
           </div>
           <table class="table" id="predTable" aria-label="Predicted y values for each x">
             <thead>
-              <tr><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th></tr>
+              <tr><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th></tr>
             </thead>
             <tbody></tbody>
+            <tfoot>
+              <tr class="sum"><td></td><td></td><td></td><td></td><td id="rssCell">∑ = 0.000</td></tr>
+              <tr class="sum"><td></td><td></td><td></td><td></td><td id="mseCell">MSE = 0.000</td></tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -261,6 +268,10 @@
 
     let state = { w: 1.0, b: 1.0 };
 
+    // Fixed axis domains based on initial data (no auto-rescaling during interaction)
+    const xMin0 = Math.min(...xData), xMax0 = Math.max(...xData);
+    const yMin0 = Math.min(...yData), yMax0 = Math.max(...yData);
+
     const els = {
       plot: document.getElementById('plot'),
       slope: document.getElementById('slope'),
@@ -271,7 +282,9 @@
       resetBtn: document.getElementById('resetBtn'),
       equation: document.getElementById('equation'),
       mse: document.getElementById('mse'),
-      predTable: document.getElementById('predTable').querySelector('tbody'),
+      predBody: document.getElementById('predTable').querySelector('tbody'),
+      rssCell: document.getElementById('rssCell'),
+      mseCell: document.getElementById('mseCell'),
       wDisplay: document.getElementById('wDisplay'),
       bDisplay: document.getElementById('bDisplay')
     };
@@ -301,7 +314,7 @@
     }
 
     // ------- Plot rendering -------
-    let drag = { idx: -1, yMin: 0, yMax: 0 };
+    let drag = { idx: -1, yMin: yMin0, yMax: yMax0 };
 
     function render(){
       const svg = els.plot;
@@ -314,26 +327,20 @@
       const innerW = width - pad.l - pad.r;
       const innerH = height - pad.t - pad.b;
 
-      const xMin = Math.min(...xData), xMax = Math.max(...xData);
-      const lineYs = [computePred(xMin), computePred(xMax)];
-      let yMin = Math.min(...yData, ...lineYs);
-      let yMax = Math.max(...yData, ...lineYs);
-      const yPad = 0.1 * Math.max(1, (yMax - yMin));
-      yMin -= yPad; yMax += yPad;
+      // Fixed domains (no auto padding, no prediction-based scaling)
+      const xMin = xMin0, xMax = xMax0;
+      const yMin = yMin0, yMax = yMax0;
 
       function xScale(x){ return pad.l + (x - xMin)/(xMax - xMin) * innerW; }
       function yScale(y){ return pad.t + (1 - (y - yMin)/(yMax - yMin)) * innerH; }
 
-      function yUnscale(py){ return yMin + (1 - (py - pad.t)/innerH) * (yMax - yMin); }
+      svg.innerHTML = '';
 
-      // Build axes and grid
+      // Grid + axes
       const ticks = 6;
       const xTicks = Array.from({length: ticks}, (_,i)=> xMin + i*(xMax-xMin)/(ticks-1));
       const yTicks = Array.from({length: ticks}, (_,i)=> yMin + i*(yMax-yMin)/(ticks-1));
 
-      svg.innerHTML = '';
-
-      // Gridlines
       const grid = document.createElementNS('http://www.w3.org/2000/svg','g');
       yTicks.forEach(v=>{
         const y = yScale(v);
@@ -357,7 +364,6 @@
       });
       svg.appendChild(grid);
 
-      // Axes
       const axisColor = 'rgba(148,163,184,0.6)';
       const axis = document.createElementNS('http://www.w3.org/2000/svg','g');
       const xAxis = document.createElementNS('http://www.w3.org/2000/svg','line');
@@ -376,7 +382,7 @@
       yAxis.setAttribute('stroke', axisColor);
       axis.appendChild(yAxis);
 
-      // Axis labels
+      // Axis tick labels
       xTicks.forEach(v=>{
         const x = xScale(v);
         const t = document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -399,9 +405,31 @@
         t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(1);
         axis.appendChild(t);
       });
+      
+      // Axis labels
+      const xLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
+      xLabel.setAttribute('x', pad.l + innerW/2);
+      xLabel.setAttribute('y', height - 4);
+      xLabel.setAttribute('text-anchor', 'middle');
+      xLabel.setAttribute('fill', '#9ca3af');
+      xLabel.setAttribute('font-size', '12');
+      xLabel.textContent = 'x';
+      axis.appendChild(xLabel);
+
+      const yLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
+      const yCenter = pad.t + innerH/2;
+      yLabel.setAttribute('x', 14);
+      yLabel.setAttribute('y', yCenter);
+      yLabel.setAttribute('text-anchor', 'middle');
+      yLabel.setAttribute('fill', '#9ca3af');
+      yLabel.setAttribute('font-size', '12');
+      yLabel.setAttribute('transform', `rotate(-90 14 ${yCenter})`);
+      yLabel.textContent = 'y';
+      axis.appendChild(yLabel);
+
       svg.appendChild(axis);
 
-      // Define a gradient for the main prediction line (must be defined before use)
+      // Define gradient for prediction line
       const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
       const grad = document.createElementNS('http://www.w3.org/2000/svg','linearGradient');
       grad.setAttribute('id', 'gradLine');
@@ -412,17 +440,15 @@
       grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
 
       // Prediction line (current w,b)
-      const x1 = xMin, x2 = xMax;
-      const y1 = computePred(x1), y2 = computePred(x2);
-      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-      line.setAttribute('x1', xScale(x1));
-      line.setAttribute('y1', yScale(y1));
-      line.setAttribute('x2', xScale(x2));
-      line.setAttribute('y2', yScale(y2));
-      line.setAttribute('stroke', 'url(#gradLine)');
-      line.setAttribute('stroke-width', '3');
-      line.setAttribute('opacity', '0.95');
-      svg.appendChild(line);
+      const predLine = document.createElementNS('http://www.w3.org/2000/svg','line');
+      predLine.setAttribute('x1', xScale(xMin));
+      predLine.setAttribute('y1', yScale(computePred(xMin)));
+      predLine.setAttribute('x2', xScale(xMax));
+      predLine.setAttribute('y2', yScale(computePred(xMax)));
+      predLine.setAttribute('stroke', 'url(#gradLine)');
+      predLine.setAttribute('stroke-width', '3');
+      predLine.setAttribute('opacity', '0.95');
+      svg.appendChild(predLine);
 
       // Best-fit line preview (only visible after Fit)
       if (render.bestLine) {
@@ -438,6 +464,21 @@
         svg.appendChild(bl);
       }
 
+      // Residuals (vertical lines between data and prediction)
+      const gRes = document.createElementNS('http://www.w3.org/2000/svg','g');
+      for (let i=0;i<xData.length;i++){
+        const x = xData[i];
+        const y = yData[i];
+        const yh = computePred(x);
+        const rl = document.createElementNS('http://www.w3.org/2000/svg','line');
+        rl.setAttribute('x1', xScale(x)); rl.setAttribute('x2', xScale(x));
+        rl.setAttribute('y1', yScale(y)); rl.setAttribute('y2', yScale(yh));
+        rl.setAttribute('class','residual-line');
+        rl.setAttribute('stroke-dasharray','4 4');
+        gRes.appendChild(rl);
+      }
+      svg.appendChild(gRes);
+
       // Points
       const gPts = document.createElementNS('http://www.w3.org/2000/svg','g');
       for(let i=0;i<xData.length;i++){
@@ -451,7 +492,7 @@
         c.style.filter = 'drop-shadow(0 4px 10px rgba(251,191,36,0.35))';
         c.addEventListener('pointerdown', (e)=>{
           drag.idx = i;
-          drag.yMin = yMin; drag.yMax = yMax; // snapshot domain for stable dragging
+          drag.yMin = yMin0; drag.yMax = yMax0; // fixed domain for dragging
           c.setPointerCapture(e.pointerId);
         });
         c.addEventListener('pointermove', (e)=>{
@@ -462,16 +503,19 @@
             if (!screenCTM) return;
             const cursorPt = pt.matrixTransform(screenCTM.inverse());
             const py = cursorPt.y;
-            const y = drag.yMin + (1 - (py - pad.t)/innerH) * (drag.yMax - drag.yMin);
-            // clamp to current domain snapshot
-            const cy = Math.max(drag.yMin, Math.min(drag.yMax, y));
+            const cyFloat = drag.yMin + (1 - (py - pad.t)/innerH) * (drag.yMax - drag.yMin);
+            // clamp to fixed domain
+            const cy = Math.max(drag.yMin, Math.min(drag.yMax, cyFloat));
             yData[i] = cy;
-            // update circle position live without full re-render for performance
+            // update circle position live without full re-render
             c.setAttribute('cy', yScale(cy));
             updateReadouts();
+            // also update corresponding residual line quickly
+            const rl = gRes.children[i];
+            if (rl) { rl.setAttribute('y1', yScale(cy)); rl.setAttribute('y2', yScale(computePred(xData[i]))); }
           }
         });
-        c.addEventListener('pointerup', ()=>{ drag.idx = -1; /* full re-render to update scales */ render(); });
+        c.addEventListener('pointerup', ()=>{ drag.idx = -1; render(); });
         c.addEventListener('pointercancel', ()=>{ drag.idx = -1; render(); });
         gPts.appendChild(c);
       }
@@ -484,18 +528,23 @@
       // Equation and MSE
       els.slopeVal.textContent = state.w.toFixed(2);
       els.interceptVal.textContent = state.b.toFixed(2);
-      els.equation.innerHTML = `ŷ = <span style="color:#93c5fd">${state.w.toFixed(2)}</span> · x + <span style=\"color:#93c5fd\">${state.b.toFixed(2)}</span>`;
-      els.mse.textContent = computeMSE().toFixed(3);
+      els.equation.innerHTML = `ŷ = <span style="color:#93c5fd">${state.w.toFixed(2)}</span> · x + <span style="color:#93c5fd">${state.b.toFixed(2)}</span>`;
+      const mseVal = computeMSE();
+      els.mse.textContent = mseVal.toFixed(3);
       els.wDisplay.textContent = `w = ${state.w.toFixed(2)}`;
       els.bDisplay.textContent = `b = ${state.b.toFixed(2)}`;
 
-      // Predictions table
+      // Predictions table + summaries
+      let rss = 0;
       const rows = xData.map((x,i)=>{
         const yh = computePred(x);
         const resid = yData[i] - yh;
-        return `<tr><td>${x}</td><td>${yData[i].toFixed(2)}</td><td>${yh.toFixed(2)}</td><td>${resid.toFixed(2)}</td></tr>`;
+        const r2 = resid*resid; rss += r2;
+        return `<tr><td>${x}</td><td>${yData[i].toFixed(2)}</td><td>${yh.toFixed(2)}</td><td>${resid.toFixed(2)}</td><td>${r2.toFixed(3)}</td></tr>`;
       }).join('');
-      els.predTable.innerHTML = rows;
+      els.predBody.innerHTML = rows;
+      els.rssCell.textContent = `∑ = ${rss.toFixed(3)}`;
+      els.mseCell.textContent = `MSE = ${(rss/xData.length).toFixed(3)}`;
     }
 
     // ------- Events -------
