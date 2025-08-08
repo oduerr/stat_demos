@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Linear Regression ≡ 1-Layer Neural Network</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #0b1220;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --primary: #60a5fa;
+      --primary-2: #22d3ee;
+      --accent: #34d399;
+      --danger: #f87171;
+      --grid: rgba(148,163,184,0.15);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1000px 600px at 20% -10%, rgba(59,130,246,0.25), transparent 60%),
+                  radial-gradient(700px 500px at 100% 0%, rgba(34,211,238,0.2), transparent 60%),
+                  linear-gradient(180deg, #0b1022 0%, #0a0f1e 60%, #080d1a 100%);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px clamp(16px, 3vw, 28px) 8px;
+    }
+    .title {
+      font-size: clamp(20px, 3vw, 28px);
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    main {
+      padding: 4px clamp(16px, 3vw, 28px) 28px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: clamp(12px, 2.5vw, 22px);
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px 16px;
+      border-bottom: 1px solid rgba(148,163,184,0.12);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0));
+    }
+    .card-title { font-weight: 600; letter-spacing: 0.2px; }
+    .badge {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(96,165,250,0.15);
+      border: 1px solid rgba(96,165,250,0.35);
+      color: #bfdbfe;
+    }
+    .card-body { padding: 16px; }
+
+    /* Plot area */
+    .plot-wrap { width: 100%; height: clamp(320px, 45vh, 520px); }
+    svg { width: 100%; height: 100%; display: block; }
+    .axis path, .axis line { stroke: rgba(148,163,184,0.35); }
+    .gridline { stroke: var(--grid); stroke-dasharray: 3 5; }
+    .point { cursor: ns-resize; }
+
+    .legend {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      color: var(--muted); font-size: 13px; margin-top: 10px;
+    }
+    .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; }
+
+    /* Controls */
+    .controls { display: grid; gap: 14px; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+    .row label { color: var(--muted); font-size: 12px; letter-spacing: 0.3px; text-transform: uppercase; }
+    .value {
+      min-width: 92px; text-align: right; font-variant-numeric: tabular-nums;
+      padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(148,163,184,0.18);
+    }
+    .slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; background: rgba(148,163,184,0.25); outline: none; }
+    .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(180deg, #93c5fd, #60a5fa); border: 1px solid rgba(30,64,175,0.6); box-shadow: 0 6px 14px rgba(59,130,246,0.45); cursor: pointer; }
+    .slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #60a5fa; border: none; cursor: pointer; }
+
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    button {
+      background: linear-gradient(180deg, rgba(96,165,250,0.15), rgba(96,165,250,0.05));
+      color: #dbeafe; border: 1px solid rgba(96,165,250,0.35);
+      padding: 10px 12px; border-radius: 10px; cursor: pointer; font-weight: 600;
+      transition: transform .06s ease, filter .15s ease;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:active { transform: translateY(1px); }
+
+    .eq {
+      margin-top: 8px; padding: 10px 12px; border-radius: 10px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+      border: 1px solid rgba(148,163,184,0.18);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    .kpi {
+      display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 13px; margin: 8px 0 0;
+    }
+    .kpi .pill {
+      background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.35);
+      color: #a5f3fc; padding: 6px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;
+    }
+
+    /* NN Viz */
+    .viz {
+      width: 100%; height: clamp(220px, 30vh, 320px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 12px; margin-top: 14px; position: relative; overflow: hidden;
+    }
+    .viz .caption { position: absolute; right: 10px; bottom: 8px; color: var(--muted); font-size: 12px; }
+
+    /* Predictions table */
+    .table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; color: var(--muted); }
+    .table th, .table td { text-align: right; padding: 6px 8px; border-bottom: 1px dashed rgba(148,163,184,0.18); }
+    .table th:first-child, .table td:first-child { text-align: left; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">Linear Regression ≡ Single-Layer Neural Network (No Hidden Layer)</div>
+    <div class="subtitle">Drag the points vertically, move the sliders, and press Fit Weights. See how slope <b>w</b> and intercept <b>b</b> are exactly the weights of a 1-layer network: ŷ = w · x + b.</div>
+  </header>
+  <main>
+    <div class="grid">
+      <!-- Left: Plot -->
+      <section class="card" aria-label="Interactive scatter plot and regression line">
+        <div class="card-header">
+          <div class="card-title">Regression Playground</div>
+          <div class="badge">Drag points (vertical)</div>
+        </div>
+        <div class="card-body">
+          <div class="plot-wrap">
+            <svg id="plot" role="img" aria-label="Scatter plot with draggable points and regression line"></svg>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><span class="swatch" style="background:#fbbf24"></span>Data points</span>
+            <span><span class="swatch" style="background:#60a5fa"></span>Prediction line ŷ = w·x + b</span>
+            <span><span class="swatch" style="background:#34d399"></span>Best-fit (after pressing Fit)</span>
+          </div>
+          <table class="table" id="predTable" aria-label="Predicted y values for each x">
+            <thead>
+              <tr><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right: NN + Controls -->
+      <section class="card" aria-label="Neural network view and controls">
+        <div class="card-header">
+          <div class="card-title">1-Layer Neural Network</div>
+          <div class="badge">ŷ = w·x + b</div>
+        </div>
+        <div class="card-body">
+          <div class="controls" role="group" aria-label="Model controls">
+            <div class="row">
+              <div>
+                <label for="slope">Slope (w)</label>
+                <input id="slope" class="slider" type="range" min="-5" max="5" step="0.01" value="1" aria-labelledby="slope" />
+              </div>
+              <div class="value" id="slopeVal">1.00</div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="intercept">Intercept (b)</label>
+                <input id="intercept" class="slider" type="range" min="-10" max="10" step="0.01" value="1" aria-labelledby="intercept" />
+              </div>
+              <div class="value" id="interceptVal">1.00</div>
+            </div>
+            <div class="buttons">
+              <button id="fitBtn" title="Compute least-squares best-fit w and b">Fit Weights</button>
+              <button id="resetBtn" title="Reset sliders to defaults">Reset sliders</button>
+            </div>
+            <div class="eq" id="equation">ŷ = <span style="color:#93c5fd">1.00</span> · x + <span style="color:#93c5fd">1.00</span></div>
+            <div class="kpi">
+              <div>MSE (mean squared error):</div>
+              <div class="pill" id="mse">0.000</div>
+            </div>
+          </div>
+
+          <div class="viz" id="viz" aria-label="Neural network schematic">
+            <svg id="nnSvg" width="100%" height="100%" viewBox="0 0 700 280" preserveAspectRatio="xMidYMid meet">
+              <!-- Background grid -->
+              <defs>
+                <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#93c5fd" stop-opacity="0.9"/>
+                  <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.9"/>
+                </linearGradient>
+              </defs>
+              <g>
+                <!-- Input x -->
+                <circle cx="80" cy="140" r="28" fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.6)"/>
+                <text x="80" y="145" text-anchor="middle" fill="#bfdbfe" font-size="16" font-weight="600">x</text>
+
+                <!-- Multiply by w -->
+                <rect x="160" y="110" width="78" height="60" rx="12" fill="rgba(59,130,246,0.1)" stroke="rgba(96,165,250,0.45)"/>
+                <text x="199" y="144" text-anchor="middle" fill="#93c5fd" font-size="22" font-weight="800">×</text>
+                <text id="wDisplay" x="199" y="95" text-anchor="middle" fill="#a5f3fc" font-size="12">w = 1.00</text>
+
+                <!-- Plus b -->
+                <rect x="300" y="110" width="78" height="60" rx="12" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.45)"/>
+                <text x="339" y="144" text-anchor="middle" fill="#86efac" font-size="22" font-weight="800">+</text>
+                <text id="bDisplay" x="339" y="95" text-anchor="middle" fill="#a7f3d0" font-size="12">b = 1.00</text>
+
+                <!-- Output y-hat -->
+                <circle cx="500" cy="140" r="28" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.6)"/>
+                <text x="500" y="145" text-anchor="middle" fill="#99f6e4" font-size="16" font-weight="700">ŷ</text>
+
+                <!-- Arrows -->
+                <path d="M108,140 L160,140" stroke="url(#lineGrad)" stroke-width="3"/>
+                <path d="M238,140 L300,140" stroke="url(#lineGrad)" stroke-width="3"/>
+                <path d="M378,140 L472,140" stroke="url(#lineGrad)" stroke-width="3"/>
+              </g>
+              <text x="660" y="265" text-anchor="end" fill="#9ca3af" font-size="12">Single-layer NN: ŷ = w·x + b</text>
+            </svg>
+            <div class="caption">Weights update live from sliders or Fit</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // ------- Data and state -------
+    const xData = [0, 1, 2, 3, 4, 5, 6, 7];
+    // Slightly non-perfect line to make it interesting
+    let yData = [1.2, 2.1, 2.9, 4.0, 4.9, 6.1, 6.8, 8.2];
+
+    let state = { w: 1.0, b: 1.0 };
+
+    const els = {
+      plot: document.getElementById('plot'),
+      slope: document.getElementById('slope'),
+      intercept: document.getElementById('intercept'),
+      slopeVal: document.getElementById('slopeVal'),
+      interceptVal: document.getElementById('interceptVal'),
+      fitBtn: document.getElementById('fitBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      equation: document.getElementById('equation'),
+      mse: document.getElementById('mse'),
+      predTable: document.getElementById('predTable').querySelector('tbody'),
+      wDisplay: document.getElementById('wDisplay'),
+      bDisplay: document.getElementById('bDisplay')
+    };
+
+    // ------- Utilities -------
+    const mean = arr => arr.reduce((a,c)=>a+c,0)/arr.length;
+    function computePred(x){ return state.w * x + state.b; }
+    function computeMSE(){
+      let s = 0;
+      for(let i=0;i<xData.length;i++){
+        const r = yData[i] - computePred(xData[i]);
+        s += r*r;
+      }
+      return s / xData.length;
+    }
+
+    function lsqFit(){
+      const xm = mean(xData), ym = mean(yData);
+      let num=0, den=0;
+      for(let i=0;i<xData.length;i++){
+        const dx = xData[i]-xm; const dy = yData[i]-ym;
+        num += dx*dy; den += dx*dx;
+      }
+      const w = den === 0 ? 0 : num/den;
+      const b = ym - w*xm;
+      return { w, b };
+    }
+
+    // ------- Plot rendering -------
+    let drag = { idx: -1, yMin: 0, yMax: 0 };
+
+    function render(){
+      const svg = els.plot;
+      const rect = svg.getBoundingClientRect();
+      const width = rect.width || 700; // fallback if not yet laid out
+      const height = rect.height || 420;
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+      const pad = { l: 48, r: 16, t: 16, b: 36 };
+      const innerW = width - pad.l - pad.r;
+      const innerH = height - pad.t - pad.b;
+
+      const xMin = Math.min(...xData), xMax = Math.max(...xData);
+      const lineYs = [computePred(xMin), computePred(xMax)];
+      let yMin = Math.min(...yData, ...lineYs);
+      let yMax = Math.max(...yData, ...lineYs);
+      const yPad = 0.1 * Math.max(1, (yMax - yMin));
+      yMin -= yPad; yMax += yPad;
+
+      function xScale(x){ return pad.l + (x - xMin)/(xMax - xMin) * innerW; }
+      function yScale(y){ return pad.t + (1 - (y - yMin)/(yMax - yMin)) * innerH; }
+
+      function yUnscale(py){ return yMin + (1 - (py - pad.t)/innerH) * (yMax - yMin); }
+
+      // Build axes and grid
+      const ticks = 6;
+      const xTicks = Array.from({length: ticks}, (_,i)=> xMin + i*(xMax-xMin)/(ticks-1));
+      const yTicks = Array.from({length: ticks}, (_,i)=> yMin + i*(yMax-yMin)/(ticks-1));
+
+      svg.innerHTML = '';
+
+      // Gridlines
+      const grid = document.createElementNS('http://www.w3.org/2000/svg','g');
+      yTicks.forEach(v=>{
+        const y = yScale(v);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', pad.l);
+        line.setAttribute('x2', width - pad.r);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        line.setAttribute('class', 'gridline');
+        grid.appendChild(line);
+      });
+      xTicks.forEach(v=>{
+        const x = xScale(v);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('y1', pad.t);
+        line.setAttribute('y2', height - pad.b);
+        line.setAttribute('x1', x);
+        line.setAttribute('x2', x);
+        line.setAttribute('class', 'gridline');
+        grid.appendChild(line);
+      });
+      svg.appendChild(grid);
+
+      // Axes
+      const axisColor = 'rgba(148,163,184,0.6)';
+      const axis = document.createElementNS('http://www.w3.org/2000/svg','g');
+      const xAxis = document.createElementNS('http://www.w3.org/2000/svg','line');
+      xAxis.setAttribute('x1', pad.l);
+      xAxis.setAttribute('x2', width - pad.r);
+      xAxis.setAttribute('y1', height - pad.b);
+      xAxis.setAttribute('y2', height - pad.b);
+      xAxis.setAttribute('stroke', axisColor);
+      axis.appendChild(xAxis);
+
+      const yAxis = document.createElementNS('http://www.w3.org/2000/svg','line');
+      yAxis.setAttribute('y1', pad.t);
+      yAxis.setAttribute('y2', height - pad.b);
+      yAxis.setAttribute('x1', pad.l);
+      yAxis.setAttribute('x2', pad.l);
+      yAxis.setAttribute('stroke', axisColor);
+      axis.appendChild(yAxis);
+
+      // Axis labels
+      xTicks.forEach(v=>{
+        const x = xScale(v);
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x', x);
+        t.setAttribute('y', height - 10);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('fill', '#9ca3af');
+        t.setAttribute('font-size', '12');
+        t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(1);
+        axis.appendChild(t);
+      });
+      yTicks.forEach(v=>{
+        const y = yScale(v);
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x', 8);
+        t.setAttribute('y', y + 4);
+        t.setAttribute('text-anchor', 'start');
+        t.setAttribute('fill', '#9ca3af');
+        t.setAttribute('font-size', '12');
+        t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(1);
+        axis.appendChild(t);
+      });
+      svg.appendChild(axis);
+
+      // Define a gradient for the main prediction line (must be defined before use)
+      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      const grad = document.createElementNS('http://www.w3.org/2000/svg','linearGradient');
+      grad.setAttribute('id', 'gradLine');
+      grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
+      grad.setAttribute('x2', '1'); grad.setAttribute('y2', '1');
+      const s1 = document.createElementNS('http://www.w3.org/2000/svg','stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#93c5fd');
+      const s2 = document.createElementNS('http://www.w3.org/2000/svg','stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#22d3ee');
+      grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
+
+      // Prediction line (current w,b)
+      const x1 = xMin, x2 = xMax;
+      const y1 = computePred(x1), y2 = computePred(x2);
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1', xScale(x1));
+      line.setAttribute('y1', yScale(y1));
+      line.setAttribute('x2', xScale(x2));
+      line.setAttribute('y2', yScale(y2));
+      line.setAttribute('stroke', 'url(#gradLine)');
+      line.setAttribute('stroke-width', '3');
+      line.setAttribute('opacity', '0.95');
+      svg.appendChild(line);
+
+      // Best-fit line preview (only visible after Fit)
+      if (render.bestLine) {
+        const bl = document.createElementNS('http://www.w3.org/2000/svg','line');
+        bl.setAttribute('x1', xScale(xMin));
+        bl.setAttribute('y1', yScale(render.bestLine.w * xMin + render.bestLine.b));
+        bl.setAttribute('x2', xScale(xMax));
+        bl.setAttribute('y2', yScale(render.bestLine.w * xMax + render.bestLine.b));
+        bl.setAttribute('stroke', '#34d399');
+        bl.setAttribute('stroke-width', '2.5');
+        bl.setAttribute('stroke-dasharray', '6 6');
+        bl.setAttribute('opacity', '0.9');
+        svg.appendChild(bl);
+      }
+
+      // Points
+      const gPts = document.createElementNS('http://www.w3.org/2000/svg','g');
+      for(let i=0;i<xData.length;i++){
+        const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('cx', xScale(xData[i]));
+        c.setAttribute('cy', yScale(yData[i]));
+        c.setAttribute('r', 6.5);
+        c.setAttribute('fill', '#fbbf24');
+        c.setAttribute('stroke', 'rgba(245,158,11,0.7)');
+        c.setAttribute('class','point');
+        c.style.filter = 'drop-shadow(0 4px 10px rgba(251,191,36,0.35))';
+        c.addEventListener('pointerdown', (e)=>{
+          drag.idx = i;
+          drag.yMin = yMin; drag.yMax = yMax; // snapshot domain for stable dragging
+          c.setPointerCapture(e.pointerId);
+        });
+        c.addEventListener('pointermove', (e)=>{
+          if(drag.idx === i){
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const screenCTM = svg.getScreenCTM();
+            if (!screenCTM) return;
+            const cursorPt = pt.matrixTransform(screenCTM.inverse());
+            const py = cursorPt.y;
+            const y = drag.yMin + (1 - (py - pad.t)/innerH) * (drag.yMax - drag.yMin);
+            // clamp to current domain snapshot
+            const cy = Math.max(drag.yMin, Math.min(drag.yMax, y));
+            yData[i] = cy;
+            // update circle position live without full re-render for performance
+            c.setAttribute('cy', yScale(cy));
+            updateReadouts();
+          }
+        });
+        c.addEventListener('pointerup', ()=>{ drag.idx = -1; /* full re-render to update scales */ render(); });
+        c.addEventListener('pointercancel', ()=>{ drag.idx = -1; render(); });
+        gPts.appendChild(c);
+      }
+      svg.appendChild(gPts);
+
+      updateReadouts();
+    }
+
+    function updateReadouts(){
+      // Equation and MSE
+      els.slopeVal.textContent = state.w.toFixed(2);
+      els.interceptVal.textContent = state.b.toFixed(2);
+      els.equation.innerHTML = `ŷ = <span style="color:#93c5fd">${state.w.toFixed(2)}</span> · x + <span style=\"color:#93c5fd\">${state.b.toFixed(2)}</span>`;
+      els.mse.textContent = computeMSE().toFixed(3);
+      els.wDisplay.textContent = `w = ${state.w.toFixed(2)}`;
+      els.bDisplay.textContent = `b = ${state.b.toFixed(2)}`;
+
+      // Predictions table
+      const rows = xData.map((x,i)=>{
+        const yh = computePred(x);
+        const resid = yData[i] - yh;
+        return `<tr><td>${x}</td><td>${yData[i].toFixed(2)}</td><td>${yh.toFixed(2)}</td><td>${resid.toFixed(2)}</td></tr>`;
+      }).join('');
+      els.predTable.innerHTML = rows;
+    }
+
+    // ------- Events -------
+    function setW(value){ state.w = parseFloat(value); render(); }
+    function setB(value){ state.b = parseFloat(value); render(); }
+
+    els.slope.addEventListener('input', (e)=> setW(e.target.value));
+    els.intercept.addEventListener('input', (e)=> setB(e.target.value));
+
+    els.fitBtn.addEventListener('click', ()=>{
+      const { w, b } = lsqFit();
+      state.w = w; state.b = b;
+      els.slope.value = w; els.intercept.value = b;
+      // show a preview best-fit line for 1.5s
+      render.bestLine = { w, b };
+      render();
+      setTimeout(()=>{ render.bestLine = null; render(); }, 1500);
+    });
+
+    els.resetBtn.addEventListener('click', ()=>{
+      state.w = 1.0; state.b = 1.0;
+      els.slope.value = 1.0; els.intercept.value = 1.0;
+      render.bestLine = null;
+      render();
+    });
+
+    window.addEventListener('resize', ()=> render());
+
+    // Init
+    function init(){
+      els.slope.value = state.w; els.intercept.value = state.b;
+      render();
+    }
+    init();
+  </script>
+</body>
+</html>
