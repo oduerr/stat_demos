@@ -146,6 +146,13 @@
     transform: translateY(1px);
   }
 
+  button.active {
+    background: linear-gradient(180deg, #37407a, #2c3466);
+    border-color: #4b5aa5;
+    color: #f0f5ff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.45), 0 0 0 1px rgba(123,223,242,0.25) inset;
+  }
+
   .panel {
     padding: 12px 14px 16px 14px;
     display: grid;
@@ -251,6 +258,7 @@
 
       <div class="actions">
         <button id="fitBtn">Fit Weights (Least Squares)</button>
+        <button class="secondary" id="autoFitBtn">Auto-Fit: Off</button>
         <button class="secondary" id="resetBtn">Reset Points</button>
         <div class="row" style="margin-left:auto">
           <span class="mono">MSE:</span>
@@ -349,6 +357,7 @@
   // Model parameters (slope and intercept)
   let w = 0;
   let b = 0;
+  let autoFit = false;
 
   // Plot ranges
   const xMin = 0, xMax = 8; // pad around 1..7
@@ -371,6 +380,7 @@
   const mseEl = document.getElementById('mse');
   const fitBtn = document.getElementById('fitBtn');
   const resetBtn = document.getElementById('resetBtn');
+  const autoFitBtn = document.getElementById('autoFitBtn');
 
   // Network labels
   const wDisp = document.getElementById('wDisp');
@@ -618,7 +628,12 @@
     if (isDragging && draggingIndex !== -1) {
       const newY = Math.max(yMin, Math.min(yMax, pxToY(pos.y)));
       data[draggingIndex].y = newY;
-      render();
+      if (autoFit) {
+        const { w: wHat, b: bHat } = fitLeastSquares();
+        setModel({ slope: wHat, intercept: bHat, fromUser: false });
+      } else {
+        render();
+      }
     } else {
       // Hover feedback cursor
       const idx = hitTestPoint(pos.x, pos.y);
@@ -644,6 +659,20 @@
     }
     render();
   }
+
+  function updateAutoFitBtn() {
+    autoFitBtn.textContent = autoFit ? 'Auto-Fit: On' : 'Auto-Fit: Off';
+    autoFitBtn.classList.toggle('active', autoFit);
+  }
+
+  autoFitBtn.addEventListener('click', () => {
+    autoFit = !autoFit;
+    updateAutoFitBtn();
+    if (autoFit) {
+      const { w: wHat, b: bHat } = fitLeastSquares();
+      setModel({ slope: wHat, intercept: bHat, fromUser: false });
+    }
+  });
 
   slopeSlider.addEventListener('input', (e) => {
     setModel({ slope: parseFloat(e.target.value), intercept: b, fromUser: true });
@@ -683,6 +712,8 @@
     const ro = new ResizeObserver(render);
     ro.observe(canvas);
     window.addEventListener('resize', render);
+
+    updateAutoFitBtn();
 
     render();
   }
