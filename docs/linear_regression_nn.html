@@ -172,6 +172,9 @@
             <span><span class="swatch" style="background:#f87171"></span>Residuals</span>
             <span><span class="swatch" style="background:#34d399"></span>Best-fit (after pressing Fit)</span>
           </div>
+          <div class="buttons" style="margin-top: 10px;">
+            <button id="addPointBtn" title="Add a new random data point">Add Data Point</button>
+          </div>
           <table class="table" id="predTable" aria-label="Predicted y values for each x">
             <thead>
               <tr><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th></tr>
@@ -209,7 +212,6 @@
             </div>
             <div class="buttons">
               <button id="fitBtn" title="Compute least-squares best-fit w and b">Fit Weights</button>
-              <button id="resetBtn" title="Reset sliders to defaults">Reset sliders</button>
             </div>
             <div class="eq" id="equation">ŷ = <span style="color:#93c5fd">1.00</span> · x + <span style="color:#93c5fd">1.00</span></div>
             <div class="kpi">
@@ -220,7 +222,6 @@
 
           <div class="viz" id="viz" aria-label="Neural network schematic">
             <svg id="nnSvg" width="100%" height="100%" viewBox="0 0 700 280" preserveAspectRatio="xMidYMid meet">
-              <!-- Background grid -->
               <defs>
                 <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stop-color="#93c5fd" stop-opacity="0.9"/>
@@ -229,31 +230,32 @@
               </defs>
               <g>
                 <!-- Input x -->
-                <circle cx="80" cy="140" r="28" fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.6)"/>
-                <text x="80" y="145" text-anchor="middle" fill="#bfdbfe" font-size="16" font-weight="600">x</text>
+                <circle cx="80" cy="80" r="28" fill="rgba(59,130,246,0.12)" stroke="rgba(96,165,250,0.6)"/>
+                <text x="80" y="85" text-anchor="middle" fill="#bfdbfe" font-size="16" font-weight="600">x</text>
 
-                <!-- Multiply by w -->
-                <rect x="160" y="110" width="78" height="60" rx="12" fill="rgba(59,130,246,0.1)" stroke="rgba(96,165,250,0.45)"/>
-                <text x="199" y="144" text-anchor="middle" fill="#93c5fd" font-size="22" font-weight="800">×</text>
-                <text id="wDisplay" x="199" y="95" text-anchor="middle" fill="#a5f3fc" font-size="12">w = 1.00</text>
+                <!-- Input 1 (for bias) -->
+                <circle cx="80" cy="200" r="28" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.45)"/>
+                <text x="80" y="205" text-anchor="middle" fill="#a7f3d0" font-size="16" font-weight="600">1</text>
 
-                <!-- Plus b -->
-                <rect x="300" y="110" width="78" height="60" rx="12" fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.45)"/>
-                <text x="339" y="144" text-anchor="middle" fill="#86efac" font-size="22" font-weight="800">+</text>
-                <text id="bDisplay" x="339" y="95" text-anchor="middle" fill="#a7f3d0" font-size="12">b = 1.00</text>
+                <!-- Summation node -->
+                <circle cx="350" cy="140" r="40" fill="rgba(255,255,255,0.06)" stroke="rgba(148,163,184,0.25)"/>
+                <text x="350" y="148" text-anchor="middle" fill="#e5e7eb" font-size="32" font-weight="400">Σ</text>
 
                 <!-- Output y-hat -->
-                <circle cx="500" cy="140" r="28" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.6)"/>
-                <text x="500" y="145" text-anchor="middle" fill="#99f6e4" font-size="16" font-weight="700">ŷ</text>
+                <!-- <circle cx="550" cy="140" r="28" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.6)"/>
+                <text x="550" y="145" text-anchor="middle" fill="#99f6e4" font-size="16" font-weight="700">ŷ</text> -->
 
-                <!-- Arrows -->
-                <path d="M108,140 L160,140" stroke="url(#lineGrad)" stroke-width="3"/>
-                <path d="M238,140 L300,140" stroke="url(#lineGrad)" stroke-width="3"/>
-                <path d="M378,140 L472,140" stroke="url(#lineGrad)" stroke-width="3"/>
+                <!-- Arrows and weights -->
+                <path d="M108,85 L310,135" stroke="url(#lineGrad)" stroke-width="3"/>
+                <path d="M108,195 L310,145" stroke="url(#lineGrad)" stroke-width="3"/>
+                <path d="M390,140 L522,140" stroke="url(#lineGrad)" stroke-width="3"/>
+
+                <text id="wDisplay" x="200" y="95" text-anchor="middle" fill="#a5f3fc" font-size="12">w = 1.00</text>
+                <text id="bDisplay" x="200" y="190" text-anchor="middle" fill="#a7f3d0" font-size="12">b = 1.00</text>
               </g>
-              <text x="660" y="265" text-anchor="end" fill="#9ca3af" font-size="12">Single-layer NN: ŷ = w·x + b</text>
+              <text x="10" y="0" text-anchor="left" fill="#9ca3af" font-size="24">Single-layer NN: ŷ = w·x + b</text>
             </svg>
-            <div class="caption">Weights update live from sliders or Fit</div>
+            <!-- <div class="caption">Weights update live from sliders or Fit</div> -->
           </div>
         </div>
       </section>
@@ -262,15 +264,15 @@
 
   <script>
     // ------- Data and state -------
-    const xData = [0, 1, 2, 3, 4, 5, 6, 7];
+    let xData = [0, 1, 2, 3, 4, 5, 6, 7];
     // Slightly non-perfect line to make it interesting
     let yData = [1.2, 2.1, 2.9, 4.0, 4.9, 6.1, 6.8, 8.2];
 
     let state = { w: 1.0, b: 1.0 };
 
     // Fixed axis domains based on initial data (no auto-rescaling during interaction)
-    const xMin0 = Math.min(...xData), xMax0 = Math.max(...xData);
-    const yMin0 = Math.min(...yData), yMax0 = Math.max(...yData);
+    let xMin0 = Math.min(...xData), xMax0 = Math.max(...xData);
+    let yMin0 = Math.min(...yData), yMax0 = Math.max(...yData);
 
     const els = {
       plot: document.getElementById('plot'),
@@ -279,7 +281,7 @@
       slopeVal: document.getElementById('slopeVal'),
       interceptVal: document.getElementById('interceptVal'),
       fitBtn: document.getElementById('fitBtn'),
-      resetBtn: document.getElementById('resetBtn'),
+      addPointBtn: document.getElementById('addPointBtn'),
       equation: document.getElementById('equation'),
       mse: document.getElementById('mse'),
       predBody: document.getElementById('predTable').querySelector('tbody'),
@@ -311,6 +313,19 @@
       const w = den === 0 ? 0 : num/den;
       const b = ym - w*xm;
       return { w, b };
+    }
+
+    function addDataPoint() {
+      const newX = xMax0 + 1;
+      const newY = computePred(newX) + (Math.random() - 0.5) * 2;
+      xData.push(newX);
+      yData.push(newY);
+      
+      // Update fixed domains
+      xMin0 = Math.min(...xData); xMax0 = Math.max(...xData);
+      yMin0 = Math.min(...yData); yMax0 = Math.max(...yData);
+      
+      render();
     }
 
     // ------- Plot rendering -------
@@ -540,7 +555,7 @@
         const yh = computePred(x);
         const resid = yData[i] - yh;
         const r2 = resid*resid; rss += r2;
-        return `<tr><td>${x}</td><td>${yData[i].toFixed(2)}</td><td>${yh.toFixed(2)}</td><td>${resid.toFixed(2)}</td><td>${r2.toFixed(3)}</td></tr>`;
+        return `<tr><td>${x.toFixed(1)}</td><td>${yData[i].toFixed(2)}</td><td>${yh.toFixed(2)}</td><td>${resid.toFixed(2)}</td><td>${r2.toFixed(3)}</td></tr>`;
       }).join('');
       els.predBody.innerHTML = rows;
       els.rssCell.textContent = `∑ = ${rss.toFixed(3)}`;
@@ -564,12 +579,7 @@
       setTimeout(()=>{ render.bestLine = null; render(); }, 1500);
     });
 
-    els.resetBtn.addEventListener('click', ()=>{
-      state.w = 1.0; state.b = 1.0;
-      els.slope.value = 1.0; els.intercept.value = 1.0;
-      render.bestLine = null;
-      render();
-    });
+    els.addPointBtn.addEventListener('click', addDataPoint);
 
     window.addEventListener('resize', ()=> render());
 
