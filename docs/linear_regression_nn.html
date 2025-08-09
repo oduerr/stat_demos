@@ -143,10 +143,19 @@
 
     /* Predictions table */
     .table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 13px; color: var(--muted); }
-    .table th, .table td { text-align: right; padding: 6px 8px; border-bottom: 1px dashed rgba(148,163,184,0.18); }
+    .table th, .table td { text-align: right; padding: 6px 8px; border-bottom: 1px dashed rgba(148,163,184,0.18); font-variant-numeric: tabular-nums; }
     .table th:first-child, .table td:first-child { text-align: left; }
+    .table th:nth-child(n+2), .table td:nth-child(n+2) { width: 22%; }
     .table tfoot td { border-top: 1px solid rgba(148,163,184,0.25); color: var(--text); font-weight: 600; }
     .residual-line { stroke: #f87171; stroke-opacity: 0.9; stroke-width: 2; stroke-linecap: round; }
+
+    button.primary {
+        background: linear-gradient(180deg, var(--primary), #3b82f6);
+        color: white;
+        border-color: #1d4ed8;
+        box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+        font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -172,7 +181,8 @@
             <span><span class="swatch" style="background:#f87171"></span>Residuals</span>
             <span><span class="swatch" style="background:#34d399"></span>Best-fit (after pressing Fit)</span>
           </div>
-          <div class="buttons" style="margin-top: 10px;">
+          <div class="buttons" style="margin-top: 10px; display: flex; gap: 10px;">
+            <button id="newDataBtn" class="primary" title="Generate new random data points">Create New Data</button>
             <button id="addPointBtn" title="Add a new random data point">Add Data Point</button>
           </div>
           <table class="table" id="predTable" aria-label="Predicted y values for each x">
@@ -264,15 +274,11 @@
 
   <script>
     // ------- Data and state -------
-    let xData = [0, 1, 2, 3, 4, 5, 6, 7];
-    // Slightly non-perfect line to make it interesting
-    let yData = [1.2, 2.1, 2.9, 4.0, 4.9, 6.1, 6.8, 8.2];
-
+    let xData, yData;
     let state = { w: 1.0, b: 1.0 };
 
     // Fixed axis domains based on initial data (no auto-rescaling during interaction)
-    let xMin0 = Math.min(...xData), xMax0 = Math.max(...xData);
-    let yMin0 = Math.min(...yData), yMax0 = Math.max(...yData);
+    let xMin0, xMax0, yMin0, yMax0;
 
     const els = {
       plot: document.getElementById('plot'),
@@ -282,6 +288,7 @@
       interceptVal: document.getElementById('interceptVal'),
       fitBtn: document.getElementById('fitBtn'),
       addPointBtn: document.getElementById('addPointBtn'),
+      newDataBtn: document.getElementById('newDataBtn'),
       equation: document.getElementById('equation'),
       mse: document.getElementById('mse'),
       predBody: document.getElementById('predTable').querySelector('tbody'),
@@ -315,21 +322,40 @@
       return { w, b };
     }
 
+    function generateInitialData() {
+        xData = [1, 2, 3, 4, 5, 6];
+        const trueW = 1.42 //(Math.random() - 0.5) * 1;
+        const trueB = -0.1 //Math.random() * 1;
+        yData = xData.map(x => trueW * x + trueB + (Math.random() - 0.5) * 1.0);
+        
+        xMin0 = 0; xMax0 = 7;
+        const yRange = Math.max(...yData) - Math.min(...yData);
+        yMin0 = Math.min(...yData) - yRange * 0.1;
+        yMax0 = Math.max(...yData) + yRange * 0.1;
+        
+        state = {w: 1.0, b: 1.0};
+        els.slope.value = state.w;
+        els.intercept.value = state.b;
+        render();
+    }
+
     function addDataPoint() {
-      const newX = xMax0 + 1;
+      const newX = xMax0;
       const newY = computePred(newX) + (Math.random() - 0.5) * 2;
       xData.push(newX);
       yData.push(newY);
       
       // Update fixed domains
-      xMin0 = Math.min(...xData); xMax0 = Math.max(...xData);
-      yMin0 = Math.min(...yData); yMax0 = Math.max(...yData);
+      xMax0 = Math.max(...xData) + 1;
+      const yRange = Math.max(...yData) - Math.min(...yData);
+      yMin0 = Math.min(...yData) - yRange * 0.1;
+      yMax0 = Math.max(...yData) + yRange * 0.1;
       
       render();
     }
 
     // ------- Plot rendering -------
-    let drag = { idx: -1, yMin: yMin0, yMax: yMax0 };
+    let drag = { idx: -1, yMin: 0, yMax: 0 };
 
     function render(){
       const svg = els.plot;
@@ -352,9 +378,35 @@
       svg.innerHTML = '';
 
       // Grid + axes
-      const ticks = 6;
-      const xTicks = Array.from({length: ticks}, (_,i)=> xMin + i*(xMax-xMin)/(ticks-1));
-      const yTicks = Array.from({length: ticks}, (_,i)=> yMin + i*(yMax-yMin)/(ticks-1));
+      const xTicks = [];
+      for (let i = Math.ceil(xMin); i <= Math.floor(xMax); i++) {
+          xTicks.push(i);
+      }
+      const yRange = yMax - yMin;
+      const yStep = yRange / 5;
+      
+      function niceTicks(min, max, count) {
+        const span = max - min;
+        const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+        const err = (span / count) / step;
+        let niceStep;
+        if (err >= 5) niceStep = 5 * step;
+        else if (err >= 2) niceStep = 2 * step;
+        else niceStep = step;
+        
+        const niceMin = Math.floor(min / niceStep) * niceStep;
+        const niceMax = Math.ceil(max / niceStep) * niceStep;
+        
+        const ticks = [];
+        for (let v = niceMin; v <= niceMax + 1e-9; v += niceStep) {
+            ticks.push(v);
+        }
+        return ticks;
+    }
+
+    // in render():
+    const yTicks = niceTicks(yMin, yMax, 5);
+
 
       const grid = document.createElementNS('http://www.w3.org/2000/svg','g');
       yTicks.forEach(v=>{
@@ -406,7 +458,7 @@
         t.setAttribute('text-anchor', 'middle');
         t.setAttribute('fill', '#9ca3af');
         t.setAttribute('font-size', '12');
-        t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(1);
+        t.textContent = v;
         axis.appendChild(t);
       });
       yTicks.forEach(v=>{
@@ -580,13 +632,13 @@
     });
 
     els.addPointBtn.addEventListener('click', addDataPoint);
+    els.newDataBtn.addEventListener('click', generateInitialData);
 
     window.addEventListener('resize', ()=> render());
 
     // Init
     function init(){
-      els.slope.value = state.w; els.intercept.value = state.b;
-      render();
+      generateInitialData();
     }
     init();
   </script>
