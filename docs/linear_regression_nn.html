@@ -3,13 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Linear Regression ≡ 1-Layer Neural Network</title>
+  <title>Linear Regression </title>
   <link rel="stylesheet" href="./shared/demo-shell.css">
+  <style>
+    /* Keep control labels lowercase */
+    .controls .row label { text-transform: none; }
+    /* Segmented control */
+    .segmented { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; gap: 0; border-radius: 999px; border: 1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.06); overflow: hidden; }
+    .segmented .pill { position: absolute; top: 2px; left: 2px; width: calc(50% - 4px); height: calc(100% - 4px); border-radius: 999px; background: linear-gradient(180deg, #93c5fd, #60a5fa); box-shadow: 0 6px 14px rgba(59,130,246,0.35); transform: translateX(0%); transition: transform 0.18s ease; pointer-events: none; }
+    .segmented button { appearance: none; background: transparent; border: 0; padding: 8px 16px; color: var(--muted); font-weight: 700; cursor: pointer; z-index: 1; position: relative; font-size: 14px; }
+    .segmented button[aria-selected="true"] { color: #0ea5e9; }
+  </style>
 </head>
 <body>
   <header>
-    <div class="title">Linear Regression ≡ Single-Layer Neural Network (No Hidden Layer)</div>
-    <div class="subtitle">Drag the points vertically, move the sliders, and press Fit Weights. See how slope <b>w</b> and intercept <b>b</b> are exactly the weights of a 1-layer network: ŷ = w · x + b.</div>
+    <div class="title" id="pageTitle">Linear Regression MLE Mode</div>
+    <div class="subtitle">Drag the points vertically, move the sliders. See how slope <b>w</b> and intercept <b>b</b> chance</div>
+    <div id="modeSwitch" role="radiogroup" aria-label="Mode" style="margin-top:8px; display:flex; gap:6px;">
+      <label style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid rgba(148,163,184,0.25);border-radius:999px;background:rgba(255,255,255,0.06);cursor:pointer;">
+        <input type="radio" name="mode" id="modeOls" value="ls" checked />
+        <span>Least Squares</span>
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid rgba(148,163,184,0.25);border-radius:999px;background:rgba(255,255,255,0.06);cursor:pointer;">
+        <input type="radio" name="mode" id="modeMle" value="mle" />
+        <span>MLE Mode</span>
+      </label>
+    </div>
   </header>
   <main>
     <div class="grid">
@@ -40,25 +59,22 @@
               </tfoot>
             </table>
           </div>
-          <details style="margin-top:10px; color: var(--muted);">
-            <summary style="cursor:pointer; color:#bfdbfe;">Why MLE ≈ Least Squares for Gaussian noise?</summary>
-            For a Gaussian likelihood y_i ~ N(μ_i, σ²), maximizing the log-likelihood over w and b is equivalent to minimizing the sum of squared residuals. The MLE for σ is σ̂ = sqrt(RSS/n).
-          </details>
+            <!-- <details style="margin-top:10px; color: var(--muted);">
+              <summary style="cursor:pointer; color:#bfdbfe;">Why MLE ≈ Least Squares for Gaussian noise?</summary>
+              For a Gaussian likelihood y_i ~ N(μ_i, σ²), maximizing the log-likelihood over w and b is equivalent to minimizing the sum of squared residuals. The MLE for σ is σ̂ = sqrt(RSS/n).
+            </details> -->
         </div>
       </section>
 
       <!-- Right: NN + Controls -->
       <section class="card" aria-label="Neural network view and controls">
         <div class="card-header">
-          <div class="card-title">1-Layer Neural Network</div>
+          <div class="card-title">Controls</div>
           <div class="badge" id="modelBadge">ŷ = w·x + b</div>
         </div>
         <div class="card-body">
           <div class="controls" role="group" aria-label="Model controls">
-            <div class="buttons" style="margin-bottom: 6px; gap: 8px;">
-              <button id="lsModeBtn" class="primary" title="Least Squares mode (MSE)">Least Squares</button>
-              <button id="mleModeBtn" title="Maximum Likelihood mode (NLL)">MLE Mode</button>
-            </div>
+            <!-- mode buttons moved to header -->
             <div class="row">
               <div>
                 <label for="slope">Slope (w)</label>
@@ -127,6 +143,9 @@
             </svg>
             <!-- <div class="caption">Weights update live from sliders or Fit</div> -->
           </div>
+          <div class="viz" id="paramSummary" aria-label="Parameter summary" style="display:none; padding:12px;">
+            <!-- Filled dynamically in MLE mode -->
+          </div>
         </div>
       </section>
     </div>
@@ -161,11 +180,17 @@
       sigmaVal: document.getElementById('sigmaVal'),
       lsModeBtn: document.getElementById('lsModeBtn'),
       mleModeBtn: document.getElementById('mleModeBtn'),
+      // Radio mode elements
+      modeOls: document.getElementById('modeOls'),
+      modeMle: document.getElementById('modeMle'),
       wDisplay: document.getElementById('wDisplay'),
       bDisplay: document.getElementById('bDisplay'),
       modelBadge: document.getElementById('modelBadge'),
       nnFormula: document.getElementById('nnFormula'),
-      tableHeadRow: document.getElementById('tableHeadRow')
+      tableHeadRow: document.getElementById('tableHeadRow'),
+      pageTitle: document.getElementById('pageTitle'),
+      viz: document.getElementById('viz'),
+      paramSummary: document.getElementById('paramSummary')
     };
 
     // ------- Utilities -------
@@ -529,11 +554,41 @@
         const mseVal = computeMSE();
         els.kpiLabel.textContent = 'MSE (mean squared error):';
         els.kpiVal.textContent = mseVal.toFixed(3);
+        // Header and right panel
+        els.pageTitle.textContent = 'Linear Regression (as point fitting)';
+        els.viz.style.display = '';
+        els.paramSummary.style.display = 'none';
       } else {
         els.sigmaVal.textContent = state.sigma.toFixed(2);
         const nllVal = computeNLL();
         els.kpiLabel.textContent = 'Negative log-likelihood:';
         els.kpiVal.textContent = nllVal.toFixed(3);
+        // Header shorthand
+        els.pageTitle.textContent = 'Linear Regression (as a probabilistic model 🎉)';
+        // Replace NN diagram with parameter summary panel
+        els.viz.style.display = 'none';
+        els.paramSummary.style.display = '';
+        const w = state.w.toFixed(2), b = state.b.toFixed(2), s = state.sigma.toFixed(2);
+        // Simple Gaussian-approx CI using OLS variance; using current data
+        const n = xData.length;
+        const xm = mean(xData);
+        let sxx = 0, rss = 0;
+        for (let i=0;i<n;i++){ sxx += (xData[i]-xm)*(xData[i]-xm); }
+        for (let i=0;i<n;i++){ const r = yData[i] - computePred(xData[i]); rss += r*r; }
+        const sigma2 = rss / n;
+        const varW = sigma2 / sxx;
+        const varB = sigma2 * (1/n + (xm*xm)/sxx);
+        const varS = sigma2 / (2*n); // rough delta-method approx for σ
+        function ci(val, v){ const se = Math.sqrt(Math.max(0, v)); const lo = (val - 1.96*se); const hi = (val + 1.96*se); return [lo, hi]; }
+        const [wLo,wHi] = ci(parseFloat(w), varW);
+        const [bLo,bHi] = ci(parseFloat(b), varB);
+        const [sLo,sHi] = ci(parseFloat(s), varS);
+        els.paramSummary.innerHTML = `
+          <div style="display:grid; gap:8px; font-variant-numeric: tabular-nums;">
+            <div><b>w</b>: ${w} [${wLo.toFixed(2)}, ${wHi.toFixed(2)}]</div>
+            <div><b>b</b>: ${b} [${bLo.toFixed(2)}, ${bHi.toFixed(2)}]</div>
+            <div><b>σ</b>: ${s} [${sLo.toFixed(2)}, ${sHi.toFixed(2)}]</div>
+          </div>`;
       }
       els.wDisplay.textContent = `w = ${state.w.toFixed(2)}`;
       els.bDisplay.textContent = `b = ${state.b.toFixed(2)}`;
@@ -554,7 +609,7 @@
       // Predictions table + summaries
       if (state.mode === 'ls'){
         // Table header for LS
-        els.tableHeadRow.innerHTML = '<th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th>';
+        els.tableHeadRow.innerHTML = '<th style="text-align:left">x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th>';
         let rss = 0;
         const rows = xData.map((x,i)=>{
           const yh = computePred(x);
@@ -567,7 +622,7 @@
         els.mseCell.textContent = `MSE = ${(rss/xData.length).toFixed(3)}`;
       } else {
         // Table header for MLE with log-likelihood column
-        els.tableHeadRow.innerHTML = '<th>x</th><th>y (data)</th><th>μ̂ (model)</th><th>log f(y|x)</th><th>per-point NLL</th>';
+        els.tableHeadRow.innerHTML = '<th style="text-align:left">x</th><th>y (data)</th><th>μ̂ (model)</th><th>log f(y|x)</th><th>per-point NLL</th>';
         let sumLog = 0;
         const rows = xData.map((x,i)=>{
           const yh = computePred(x);
@@ -622,21 +677,35 @@
     // Mode toggle
     function setMode(mode){
       state.mode = mode;
-      if (mode === 'ls'){
-        els.lsModeBtn.classList.add('primary');
-        els.mleModeBtn.classList.remove('primary');
-        els.sigmaRow.style.display = 'none';
-        els.fitBtn.textContent = 'Fit Weights';
-      } else {
-        els.mleModeBtn.classList.add('primary');
-        els.lsModeBtn.classList.remove('primary');
-        els.sigmaRow.style.display = '';
-        els.fitBtn.textContent = 'Fit MLE';
-      }
+      // Toggle controls visibility/text safely
+      if (els.sigmaRow) els.sigmaRow.style.display = (mode === 'ls') ? 'none' : '';
+      if (els.fitBtn) els.fitBtn.textContent = (mode === 'ls') ? 'Fit Weights' : 'Fit MLE';
+      // Update radios UI
+      if (els.modeOls) els.modeOls.checked = (mode === 'ls');
+      if (els.modeMle) els.modeMle.checked = (mode === 'mle');
       render();
     }
-    els.lsModeBtn.addEventListener('click', ()=> setMode('ls'));
-    els.mleModeBtn.addEventListener('click', ()=> setMode('mle'));
+    // Old buttons may be absent; keep listeners guarded
+    if (els.lsModeBtn) els.lsModeBtn.addEventListener('click', ()=> setMode('ls'));
+    if (els.mleModeBtn) els.mleModeBtn.addEventListener('click', ()=> setMode('mle'));
+    // Radio events
+    els.modeOls.addEventListener('change', ()=> setMode('ls'));
+    els.modeMle.addEventListener('change', ()=> setMode('mle'));
+    // Also respond on input for immediate feedback across browsers
+    els.modeOls.addEventListener('input', ()=> setMode('ls'));
+    els.modeMle.addEventListener('input', ()=> setMode('mle'));
+    // Keyboard navigation for segmented control
+    document.addEventListener('keydown', (e)=>{
+      const key = e.key.toLowerCase();
+      if (key === 'arrowleft') { setMode('ls'); }
+      if (key === 'arrowright') { setMode('mle'); }
+    });
+    // Dedicated shortcuts
+    document.addEventListener('keydown', (e)=>{
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.key.toLowerCase() === 'l') setMode('ls');
+      if (e.key.toLowerCase() === 'm') setMode('mle');
+    });
 
     window.addEventListener('resize', ()=> render());
 
