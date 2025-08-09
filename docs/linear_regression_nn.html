@@ -28,16 +28,22 @@
             <button id="newDataBtn" class="primary" title="Generate new random data points">Create New Data</button>
             <button id="addPointBtn" title="Add a new random data point">Add Data Point</button>
           </div>
-          <table class="table" id="predTable" aria-label="Predicted y values for each x">
-            <thead>
-              <tr><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th></tr>
-            </thead>
-            <tbody></tbody>
-            <tfoot>
-              <tr class="sum"><td></td><td></td><td></td><td></td><td id="rssCell">∑ = 0.000</td></tr>
-              <tr class="sum"><td></td><td></td><td></td><td></td><td id="mseCell">MSE = 0.000</td></tr>
-            </tfoot>
-          </table>
+          <div class="table-wrap" style="max-height: 260px; overflow-y: auto; margin-top: 12px; border-radius: 10px;">
+            <table class="table" id="predTable" aria-label="Per-point metrics">
+              <thead style="position: sticky; top: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr id="tableHeadRow"><th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th></tr>
+              </thead>
+              <tbody></tbody>
+              <tfoot style="position: sticky; bottom: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr class="sum"><td></td><td></td><td></td><td></td><td id="rssCell">∑ = 0.000</td></tr>
+                <tr class="sum"><td></td><td></td><td></td><td></td><td id="mseCell">MSE = 0.000</td></tr>
+              </tfoot>
+            </table>
+          </div>
+          <details style="margin-top:10px; color: var(--muted);">
+            <summary style="cursor:pointer; color:#bfdbfe;">Why MLE ≈ Least Squares for Gaussian noise?</summary>
+            For a Gaussian likelihood y_i ~ N(μ_i, σ²), maximizing the log-likelihood over w and b is equivalent to minimizing the sum of squared residuals. The MLE for σ is σ̂ = sqrt(RSS/n).
+          </details>
         </div>
       </section>
 
@@ -45,7 +51,7 @@
       <section class="card" aria-label="Neural network view and controls">
         <div class="card-header">
           <div class="card-title">1-Layer Neural Network</div>
-          <div class="badge">ŷ = w·x + b</div>
+          <div class="badge" id="modelBadge">ŷ = w·x + b</div>
         </div>
         <div class="card-body">
           <div class="controls" role="group" aria-label="Model controls">
@@ -117,7 +123,7 @@
                 <text id="wDisplay" x="200" y="95" text-anchor="middle" fill="#a5f3fc" font-size="12">w = 1.00</text>
                 <text id="bDisplay" x="200" y="190" text-anchor="middle" fill="#a7f3d0" font-size="12">b = 1.00</text>
               </g>
-              <text x="10" y="0" text-anchor="left" fill="#9ca3af" font-size="24">Single-layer NN: ŷ = w·x + b</text>
+              <text id="nnFormula" x="10" y="0" text-anchor="left" fill="#9ca3af" font-size="24">Single-layer NN: ŷ = w·x + b</text>
             </svg>
             <!-- <div class="caption">Weights update live from sliders or Fit</div> -->
           </div>
@@ -156,7 +162,10 @@
       lsModeBtn: document.getElementById('lsModeBtn'),
       mleModeBtn: document.getElementById('mleModeBtn'),
       wDisplay: document.getElementById('wDisplay'),
-      bDisplay: document.getElementById('bDisplay')
+      bDisplay: document.getElementById('bDisplay'),
+      modelBadge: document.getElementById('modelBadge'),
+      nnFormula: document.getElementById('nnFormula'),
+      tableHeadRow: document.getElementById('tableHeadRow')
     };
 
     // ------- Utilities -------
@@ -463,6 +472,12 @@
         c.setAttribute('stroke', 'rgba(245,158,11,0.7)');
         c.setAttribute('class','point');
         c.style.filter = 'drop-shadow(0 4px 10px rgba(251,191,36,0.35))';
+        // Tooltip info for MLE mode
+        const muhat = computePred(xData[i]);
+        const lp = logPdfNormal(yData[i], muhat, state.sigma);
+        const title = document.createElementNS('http://www.w3.org/2000/svg','title');
+        title.textContent = `x=${xData[i].toFixed(2)}, y=${yData[i].toFixed(2)}, μ̂=${muhat.toFixed(2)}, σ=${state.sigma.toFixed(2)}, log f(y|x)=${lp.toFixed(3)}`;
+        c.appendChild(title);
         c.addEventListener('pointerdown', (e)=>{
           drag.idx = i;
           drag.yMin = yMin0; drag.yMax = yMax0; // fixed domain for dragging
@@ -501,7 +516,15 @@
       // Equation and MSE
       els.slopeVal.textContent = state.w.toFixed(2);
       els.interceptVal.textContent = state.b.toFixed(2);
-      els.equation.innerHTML = `ŷ = <span style="color:#93c5fd">${state.w.toFixed(2)}</span> · x + <span style="color:#93c5fd">${state.b.toFixed(2)}</span>`;
+      if (state.mode === 'ls'){
+        els.equation.innerHTML = `ŷ = <span style="color:#93c5fd">${state.w.toFixed(2)}</span> · x + <span style="color:#93c5fd">${state.b.toFixed(2)}</span>`;
+        els.modelBadge.textContent = 'ŷ = w·x + b';
+        els.nnFormula.textContent = 'Single-layer NN: ŷ = w·x + b';
+      } else {
+        els.equation.innerHTML = `y_i ~ N(μ̂_i, σ),  μ̂_i = <span style=\"color:#93c5fd\">${state.w.toFixed(2)}</span> · x_i + <span style=\"color:#93c5fd\">${state.b.toFixed(2)}</span>`;
+        els.modelBadge.textContent = 'μ̂ = w·x + b';
+        els.nnFormula.textContent = 'Single-layer NN: μ̂ = w·x + b';
+      }
       if (state.mode === 'ls'){
         const mseVal = computeMSE();
         els.kpiLabel.textContent = 'MSE (mean squared error):';
@@ -524,13 +547,14 @@
           <span><span class="swatch" style="background:#34d399"></span>Best-fit (after pressing Fit)</span>`;
       } else {
         els.legend.innerHTML = `
-          <span><span class="swatch" style="background:#fbbf24"></span>Data points</span>
-          <span><span class="swatch" style="background:#60a5fa"></span>Prediction line</span>
-          <span><span class="swatch" style="background:#93c5fd"></span>Observation Gaussians (σ)</span>`;
+          <span><span class="swatch" style="background:#60a5fa"></span>Prediction line (μ̂)</span>
+          <span><span class="swatch" style="background:#93c5fd"></span>Observation Spread (σ)</span>`;
       }
 
       // Predictions table + summaries
       if (state.mode === 'ls'){
+        // Table header for LS
+        els.tableHeadRow.innerHTML = '<th>x</th><th>y (data)</th><th>ŷ (model)</th><th>Residual</th><th>Residual²</th>';
         let rss = 0;
         const rows = xData.map((x,i)=>{
           const yh = computePred(x);
@@ -542,6 +566,8 @@
         els.rssCell.textContent = `∑ = ${rss.toFixed(3)}`;
         els.mseCell.textContent = `MSE = ${(rss/xData.length).toFixed(3)}`;
       } else {
+        // Table header for MLE with log-likelihood column
+        els.tableHeadRow.innerHTML = '<th>x</th><th>y (data)</th><th>μ̂ (model)</th><th>log f(y|x)</th><th>per-point NLL</th>';
         let sumLog = 0;
         const rows = xData.map((x,i)=>{
           const yh = computePred(x);
