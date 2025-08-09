@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Count Regression — Poisson & Negative Binomial (MLE)</title>
+  <link rel="stylesheet" href="./shared/demo-shell.css">
+</head>
+<body>
+  <header>
+    <div class="title">Count Regression — Maximum Likelihood</div>
+    <div class="subtitle">Model counts with a log link: μ̂ = exp(w·x + b). Fit by minimizing negative log-likelihood. Switch datasets and models; watch the loss curve.</div>
+  </header>
+  <main>
+    <div class="grid">
+      <!-- Left: Plot + Table -->
+      <section class="card" aria-label="Count regression plot and data">
+        <div class="card-header" style="gap:8px;">
+          <div class="card-title">Counts and Mean Curve</div>
+          <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+            <label for="datasetSel" style="color:var(--muted); font-size:12px;">Dataset</label>
+            <select id="datasetSel" style="padding:6px 8px; border-radius:8px; background: rgba(255,255,255,0.06); color: var(--text); border:1px solid rgba(148,163,184,0.25);">
+              <option value="covid">COVID-19 (fixed)</option>
+              <option value="artificial">Artificial (draggable)</option>
+            </select>
+            <div class="badge">MLE</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="plot-wrap">
+            <svg id="plot" role="img" aria-label="Mean curve and counts"></svg>
+          </div>
+          <div class="legend">
+            <span><span class="swatch" style="background:#60a5fa"></span>μ̂ = exp(w·x + b)</span>
+            <span><span class="swatch" style="background:#fbbf24"></span>Observed counts</span>
+            <span><span class="swatch" style="background:#93c5fd"></span>±1 std dev</span>
+            <span><span class="swatch" style="background:#9ca3af"></span>x guide</span>
+          </div>
+          <div class="table-wrap" style="max-height: 260px; overflow-y: auto; margin-top: 12px; border-radius: 10px;">
+            <table class="table" id="ptTable" aria-label="Per-point NLL" style="margin-top:0;">
+              <thead style="position: sticky; top: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr><th>x</th><th>y</th><th>μ̂</th><th>per-point NLL</th></tr>
+              </thead>
+              <tbody></tbody>
+              <tfoot style="position: sticky; bottom: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr class="sum"><td></td><td></td><td></td><td id="nllTotal">Total NLL = 0.00000</td></tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Controls -->
+      <section class="card" aria-label="Controls and KPI">
+        <div class="card-header">
+          <div class="card-title">Controls</div>
+          <div class="badge">Counts</div>
+        </div>
+        <div class="card-body">
+          <div class="controls" role="group" aria-label="Model controls">
+            <div class="row">
+              <div>
+                <label for="modelSel">Model</label>
+                <select id="modelSel" style="padding:6px 8px; border-radius:8px; background: rgba(255,255,255,0.06); color: var(--text); border:1px solid rgba(148,163,184,0.25);">
+                  <option value="pois">Poisson</option>
+                  <option value="nb">Negative Binomial</option>
+                </select>
+              </div>
+              <div class="value" id="modelVal">Poisson</div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="slope">Slope (w)</label>
+                <input id="slope" class="slider" type="range" min="-1" max="1" step="0.001" value="0.30" aria-labelledby="slope" />
+              </div>
+              <div class="value" id="slopeVal">0.300</div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="intercept">Intercept (b)</label>
+                <input id="intercept" class="slider" type="range" min="-3" max="5" step="0.01" value="2.00" aria-labelledby="intercept" />
+              </div>
+              <div class="value" id="interceptVal">2.000</div>
+            </div>
+            <div class="row" id="rowTheta" style="display:none;">
+              <div>
+                <label for="theta">Dispersion (θ)</label>
+                <input id="theta" class="slider" type="range" min="0.1" max="20" step="0.1" value="5.0" aria-labelledby="theta" />
+              </div>
+              <div class="value" id="thetaVal">5.0</div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="lrExp">Learning rate</label>
+                <input id="lrExp" class="slider" type="range" min="-8" max="0" step="0.1" value="-2.0" aria-labelledby="lrExp" />
+              </div>
+              <div class="value" id="lrVal">lr = 0.01000</div>
+            </div>
+            <div class="buttons">
+              <button id="fitOneBtn" class="primary" title="Perform exactly one gradient descent step">Fit One Step</button>
+              <button id="fitNBtn" title="Perform N GD steps">Fit N Steps</button>
+              <input id="fitNInput" type="number" min="1" step="1" value="1000" style="width:90px; padding:6px 8px; border-radius:8px; border:1px solid rgba(148,163,184,0.25); background: rgba(255,255,255,0.06); color: var(--text);" />
+              <button id="fitContBtn" title="Start/Stop continuous fitting">Start Continuous Fit</button>
+              <button id="resetWBBtn" title="Reset weights w,b">Reset Weights</button>
+            </div>
+            <div class="eq" id="equation">μ̂ = exp(<span style="color:#93c5fd">0.300</span> · x + <span style="color:#93c5fd">2.000</span>)</div>
+            <div class="kpi" id="metricsBar">
+              <div>b:</div><div class="pill" id="bOut">2.000</div>
+              <div>w:</div><div class="pill" id="wOut">0.300</div>
+              <div id="thetaWrap" style="display:none;">θ:</div><div class="pill" id="thetaOut" style="display:none;">5.0</div>
+              <div>NLL:</div><div class="pill" id="nllOut">0.00000</div>
+            </div>
+            <div class="plot-wrap" style="height: 220px; margin-top:10px;">
+              <svg id="lossPlot" role="img" aria-label="Loss vs iteration"></svg>
+              <div class="kpi" style="margin-top:6px;"><div>Iter:</div><div class="pill" id="iter">0</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // Data: COVID timeseries (t,y); x=t
+    const covid = [
+      [1,130],[2,159],[3,196],[4,262],[5,482],[6,670],[7,799],[8,1040],[9,1176],[10,1457],
+      [11,1908],[12,2078],[13,3675],[14,4585],[15,5795],[16,7272],[17,9257],[18,12327],[19,15320],[20,19848]
+    ];
+
+    // State and training
+    const state = { model: 'pois', w: 0.30, b: 2.00, theta: 5.0, lrExp: -2.0, x: [], y: [] };
+    const train = { iter: 0, running: false, history: [], stallCount: 0, lastLoss: Infinity, frame: 0 };
+    const PERF = { MAX_HISTORY: 1500, STEPS_PER_FRAME: 20, SAMPLE_INTERVAL: 10, RENDER_EVERY: 3 };
+
+    // Elements
+    const els = {
+      plot: document.getElementById('plot'), lossPlot: document.getElementById('lossPlot'),
+      datasetSel: document.getElementById('datasetSel'), modelSel: document.getElementById('modelSel'), modelVal: document.getElementById('modelVal'),
+      slope: document.getElementById('slope'), intercept: document.getElementById('intercept'), theta: document.getElementById('theta'),
+      slopeVal: document.getElementById('slopeVal'), interceptVal: document.getElementById('interceptVal'), thetaVal: document.getElementById('thetaVal'),
+      rowTheta: document.getElementById('rowTheta'), thetaWrap: document.getElementById('thetaWrap'), thetaOut: document.getElementById('thetaOut'),
+      lrExp: document.getElementById('lrExp'), lrVal: document.getElementById('lrVal'),
+      fitOneBtn: document.getElementById('fitOneBtn'), fitNBtn: document.getElementById('fitNBtn'), fitNInput: document.getElementById('fitNInput'), fitContBtn: document.getElementById('fitContBtn'),
+      resetWBBtn: document.getElementById('resetWBBtn'),
+      equation: document.getElementById('equation'), bOut: document.getElementById('bOut'), wOut: document.getElementById('wOut'), nllOut: document.getElementById('nllOut'),
+      tableBody: document.getElementById('ptTable').querySelector('tbody'), nllTotal: document.getElementById('nllTotal'), iter: document.getElementById('iter')
+    };
+
+    // Utilities
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    function niceTicks(min, max, count){ const span=max-min; const step0=Math.pow(10, Math.floor(Math.log10(span/count))); const err=(span/count)/step0; let step; if(err>=5) step=5*step0; else if(err>=2) step=2*step0; else step=step0; const niceMin=Math.floor(min/step)*step; const niceMax=Math.ceil(max/step)*step; const ticks=[]; for(let v=niceMin; v<=niceMax+1e-9; v+=step) ticks.push(v); return ticks; }
+    function exp(x){ return Math.exp(x); }
+    function log(x){ return Math.log(x); }
+    function logGamma(z){ const g=7; const C=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7]; if(z<0.5) return Math.log(Math.PI)-Math.log(Math.sin(Math.PI*z))-logGamma(1-z); z-=1; let x=C[0]; for(let i=1;i<g+2;i++) x+=C[i]/(z+i); const t=z+g+0.5; return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(x); }
+
+    // Datasets
+    function loadCovid(){ state.x = covid.map(d=>d[0]); state.y = covid.map(d=>d[1]); }
+    function genArtificial(){ 
+        const n=8; 
+        const xs = Array.from({length:n}, (_,i)=> i*(10/(n-1))); 
+        const ys = xs.map(x=> { const mu = Math.exp(state.b + state.w*x); 
+        const L = Math.exp(-mu/10); let k=0; let p=1; do{ k++; p*=0.1*Math.random(); } while(p>L); return k-1; }); state.x = xs; state.y = ys; }
+
+    // Model, loss, gradient
+    function mu(x){
+      // Clamp linear predictor to avoid overflow/NaN in exp
+      const eta = state.b + state.w * x;
+      const clamped = Math.max(-20, Math.min(20, eta));
+      return Math.exp(clamped);
+    }
+    function nllPois(y, m){ return m - y*log(Math.max(m,1e-12)) + (y>1? logGamma(y+1): 0); }
+    function nllNB(y, m, th){ const a = logGamma(y+th) - logGamma(th) - (y>0? logGamma(y+1):0) + th*log(th) + y*log(Math.max(m,1e-12)) - (y+th)*log(th + m); return -a; }
+
+    function currentLr(){ return Math.pow(10, state.lrExp); }
+    function formatLr(v){ return v < 1e-5 ? v.toExponential(1) : v.toFixed(5); }
+    // Digamma approximation for NB theta gradient
+    function digamma(x){ let z=x, res=0; while(z<6){ res -= 1/z; z+=1; } const inv=1/z, inv2=inv*inv, inv4=inv2*inv2, inv6=inv4*inv2; res += Math.log(z) - 0.5*inv - inv2/12 + inv4/120 - inv6/252; return res; }
+    function step(){
+      const n = state.x.length || 1; let gw=0, gb=0, gth=0, loss=0;
+      for(let i=0;i<n;i++){
+        const xi=state.x[i], yi=state.y[i]; const m = mu(xi);
+        if (state.model==='pois'){
+          loss += nllPois(yi, m);
+          const diff = m - yi; gw += diff*xi; gb += diff;
+        } else {
+          const th = Math.max(1e-3, state.theta); loss += nllNB(yi, m, th);
+          const diffEta = (m * (yi + th)/(th + m)) - yi; gw += diffEta*xi; gb += diffEta;
+          const g = digamma(yi + th) - digamma(th) + Math.log(th/(th + m)) + 1 - (th + yi)/(th + m);
+          if (Number.isFinite(g)) gth += -g; // gradient of NLL wrt theta
+        }
+      }
+      gw/=n; gb/=n; gth/=n; loss/=n;
+      const lr=currentLr(); const wNew=state.w - lr*gw; const bNew=state.b - lr*gb; let thNew=state.theta; if(state.model==='nb'){ const lrTh=lr*0.05; if(Number.isFinite(gth)) thNew = Math.max(1e-3, state.theta - lrTh*gth); }
+      const delta=Math.abs(wNew-state.w)+Math.abs(bNew-state.b);
+      return { wNew, bNew, thNew, loss, gw, gb, gth, delta };
+    }
+
+    // Rendering loss
+    function renderLoss(){ const svg=els.lossPlot; const rect=svg.getBoundingClientRect(); const width=rect.width||700; const height=220; svg.setAttribute('viewBox',`0 0 ${width} ${height}`); svg.innerHTML=''; const pad={l:48,r:16,t:16,b:36}; const innerW=width-pad.l-pad.r; const innerH=height-pad.t-pad.b; const xs=train.history.length? train.history.map((_,i)=> i+1): [0,10]; const xMin=0, xMax=xs[xs.length-1]; const yMin=train.history.length? Math.min(...train.history):0; const yMax=train.history.length? Math.max(...train.history):1; function xScale(x){ return pad.l + (x-xMin)/(xMax-xMin||1)*innerW;} function yScale(y){ return pad.t + (1 - (y-yMin)/(yMax-yMin||1e-9))*innerH; }
+      // axes
+      const axis=document.createElementNS('http://www.w3.org/2000/svg','g'); const axisColor='rgba(148,163,184,0.6)'; const xAxis=document.createElementNS('http://www.w3.org/2000/svg','line'); xAxis.setAttribute('x1',pad.l); xAxis.setAttribute('x2',width-pad.r); xAxis.setAttribute('y1',height-pad.b); xAxis.setAttribute('y2',height-pad.b); xAxis.setAttribute('stroke',axisColor); axis.appendChild(xAxis); const yAxis=document.createElementNS('http://www.w3.org/2000/svg','line'); yAxis.setAttribute('y1',pad.t); yAxis.setAttribute('y2',height-pad.b); yAxis.setAttribute('x1',pad.l); yAxis.setAttribute('x2',pad.l); yAxis.setAttribute('stroke',axisColor); axis.appendChild(yAxis); const xTicks=(function(){const t=[]; const n=6; for(let i=0;i<=n;i++){t.push(xMin+i*(xMax-xMin)/n);} return t;})(); const yTicks=niceTicks(yMin,yMax,6); xTicks.forEach(v=>{ const x=xScale(v); const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('y1',pad.t); line.setAttribute('y2',height-pad.b); line.setAttribute('x1',x); line.setAttribute('x2',x); line.setAttribute('class','gridline'); axis.appendChild(line); const t=document.createElementNS('http://www.w3.org/2000/svg','text'); t.setAttribute('x',x); t.setAttribute('y',height-10); t.setAttribute('text-anchor','middle'); t.setAttribute('fill','#9ca3af'); t.setAttribute('font-size','12'); t.textContent=Math.round(v); axis.appendChild(t); }); yTicks.forEach(v=>{ const y=yScale(v); const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('x1',pad.l); line.setAttribute('x2',width-pad.r); line.setAttribute('y1',y); line.setAttribute('y2',y); line.setAttribute('class','gridline'); axis.appendChild(line); const t=document.createElementNS('http://www.w3.org/2000/svg','text'); t.setAttribute('x',8); t.setAttribute('y',y+4); t.setAttribute('text-anchor','start'); t.setAttribute('fill','#9ca3af'); t.setAttribute('font-size','12'); t.textContent=v.toFixed(5); axis.appendChild(t); }); const xLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); xLabel.setAttribute('x',pad.l+innerW/2); xLabel.setAttribute('y',height-4); xLabel.setAttribute('text-anchor','middle'); xLabel.setAttribute('fill','#9ca3af'); xLabel.setAttribute('font-size','12'); xLabel.textContent='Iterations'; axis.appendChild(xLabel); const yLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); const yCenter=pad.t+innerH/2; yLabel.setAttribute('x',14); yLabel.setAttribute('y',yCenter); yLabel.setAttribute('text-anchor','middle'); yLabel.setAttribute('fill','#9ca3af'); yLabel.setAttribute('font-size','12'); yLabel.setAttribute('transform',`rotate(-90 14 ${yCenter})`); yLabel.textContent='Negative log-likelihood'; axis.appendChild(yLabel); svg.appendChild(axis);
+      let d=''; if (train.history.length){ for(let i=0;i<train.history.length;i++){ const X=xScale(i+1); const Y=yScale(train.history[i]); d += (i===0?'M':'L')+X+' '+Y+' '; } } else { d = `M ${xScale(0)} ${yScale(0)} L ${xScale(1)} ${yScale(0)}`; }
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d', d.trim()); path.setAttribute('fill','none'); path.setAttribute('stroke','#34d399'); path.setAttribute('stroke-width','2'); svg.appendChild(path);
+    }
+
+    // Render main plot
+    function render(){ const svg=els.plot; const rect=svg.getBoundingClientRect(); const width=rect.width||700; const height=420; svg.setAttribute('viewBox',`0 0 ${width} ${height}`); svg.innerHTML=''; const pad={l:48,r:16,t:16,b:36}; const innerW=width-pad.l-pad.r; const innerH=height-pad.t-pad.b; const xMin=Math.min(...state.x), xMax=Math.max(...state.x); const yMin=0, yMax=Math.max(1, ...state.y)*1.2; function xScale(x){ return pad.l + (x-xMin)/(xMax-xMin||1)*innerW;} function yScale(y){ return pad.t + (1 - (y-yMin)/(yMax-yMin||1))*innerH; }
+      // defs
+      const defs=document.createElementNS('http://www.w3.org/2000/svg','defs'); const clip=document.createElementNS('http://www.w3.org/2000/svg','clipPath'); clip.setAttribute('id','plotClip'); const clipRect=document.createElementNS('http://www.w3.org/2000/svg','rect'); clipRect.setAttribute('x',pad.l); clipRect.setAttribute('y',pad.t); clipRect.setAttribute('width',innerW); clipRect.setAttribute('height',innerH); clip.appendChild(clipRect); defs.appendChild(clip); svg.appendChild(defs);
+      // axes
+      const axisColor='rgba(148,163,184,0.6)'; const axis=document.createElementNS('http://www.w3.org/2000/svg','g'); const xAxis=document.createElementNS('http://www.w3.org/2000/svg','line'); xAxis.setAttribute('x1',pad.l); xAxis.setAttribute('x2',width-pad.r); xAxis.setAttribute('y1',height-pad.b); xAxis.setAttribute('y2',height-pad.b); xAxis.setAttribute('stroke',axisColor); axis.appendChild(xAxis); const yAxis=document.createElementNS('http://www.w3.org/2000/svg','line'); yAxis.setAttribute('y1',pad.t); yAxis.setAttribute('y2',height-pad.b); yAxis.setAttribute('x1',pad.l); yAxis.setAttribute('x2',pad.l); yAxis.setAttribute('stroke',axisColor); axis.appendChild(yAxis); const xTicks=niceTicks(xMin,xMax,6); const yTicks=niceTicks(yMin,yMax,6); xTicks.forEach(v=>{ const x=xScale(v); const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('y1',pad.t); line.setAttribute('y2',height-pad.b); line.setAttribute('x1',x); line.setAttribute('x2',x); line.setAttribute('class','gridline'); axis.appendChild(line); const t=document.createElementNS('http://www.w3.org/2000/svg','text'); t.setAttribute('x',x); t.setAttribute('y',height-10); t.setAttribute('text-anchor','middle'); t.setAttribute('fill','#9ca3af'); t.setAttribute('font-size','12'); t.textContent=v.toFixed(0); axis.appendChild(t); }); yTicks.forEach(v=>{ const y=yScale(v); const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('x1',pad.l); line.setAttribute('x2',width-pad.r); line.setAttribute('y1',y); line.setAttribute('y2',y); line.setAttribute('class','gridline'); axis.appendChild(line); const t=document.createElementNS('http://www.w3.org/2000/svg','text'); t.setAttribute('x',8); t.setAttribute('y',y+4); t.setAttribute('text-anchor','start'); t.setAttribute('fill','#9ca3af'); t.setAttribute('font-size','12'); t.textContent=v.toFixed(0); axis.appendChild(t); }); const xLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); xLabel.setAttribute('x',pad.l+innerW/2); xLabel.setAttribute('y',height-4); xLabel.setAttribute('text-anchor','middle'); xLabel.setAttribute('fill','#9ca3af'); xLabel.setAttribute('font-size','12'); xLabel.textContent=(els.datasetSel.value==='covid'?'t':'x'); axis.appendChild(xLabel); const yLabel=document.createElementNS('http://www.w3.org/2000/svg','text'); const yCenter=pad.t+innerH/2; yLabel.setAttribute('x',14); yLabel.setAttribute('y',yCenter); yLabel.setAttribute('text-anchor','middle'); yLabel.setAttribute('fill','#9ca3af'); yLabel.setAttribute('font-size','12'); yLabel.setAttribute('transform',`rotate(-90 14 ${yCenter})`); yLabel.textContent='count y'; axis.appendChild(yLabel); svg.appendChild(axis);
+      // content
+      const g=document.createElementNS('http://www.w3.org/2000/svg','g'); g.setAttribute('clip-path','url(#plotClip)');
+      // mean curve + +/- 1 std
+      let d=''; const N=200; for(let i=0;i<=N;i++){ const x=xMin+(i/N)*(xMax-xMin); const m=mu(x); const mc = Math.max(yMin, Math.min(yMax, m)); const X=xScale(x), Y=yScale(mc); d+=(i===0?'M':'L')+X+' '+Y+' '; }
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path'); path.setAttribute('d', d.trim()); path.setAttribute('fill','none'); path.setAttribute('stroke','#60a5fa'); path.setAttribute('stroke-width','3'); path.setAttribute('opacity','0.95'); g.appendChild(path);
+      // shaded std band (with numeric guards)
+      let dBand='';
+      for(let i=0;i<=N;i++){
+        const x=xMin+(i/N)*(xMax-xMin); const m=mu(x);
+        const th = Math.max(1e-3, state.theta);
+        const v=(state.model==='pois')? m : m + (m*m)/th;
+        const sd=Math.sqrt(Math.max(0,v)); const X=xScale(x);
+        const yLow=Math.max(yMin, Math.min(yMax, Math.max(0,m-sd)));
+        const Y1=yScale(yLow); const Y1s = Number.isFinite(Y1) ? Y1 : yScale(Math.min(yMax, Math.max(yMin, m)));
+        dBand+=(i===0?`M ${X} ${Y1s}`:` L ${X} ${Y1s}`);
+      }
+      for(let i=N;i>=0;i--){
+        const x=xMin+(i/N)*(xMax-xMin); const m=mu(x);
+        const th = Math.max(1e-3, state.theta);
+        const v=(state.model==='pois')? m : m + (m*m)/th;
+        const sd=Math.sqrt(Math.max(0,v)); const X=xScale(x);
+        const yHigh=Math.max(yMin, Math.min(yMax, m+sd));
+        const Y2=yScale(yHigh); const Y2s = Number.isFinite(Y2) ? Y2 : yScale(Math.min(yMax, Math.max(yMin, m)));
+        dBand+=` L ${X} ${Y2s}`;
+      }
+      const band=document.createElementNS('http://www.w3.org/2000/svg','path'); band.setAttribute('d', dBand.trim()); band.setAttribute('fill','rgba(147,197,253,0.08)'); band.setAttribute('stroke','none'); g.appendChild(band);
+      // x-guides group (behind PMF)
+      const gGuides=document.createElementNS('http://www.w3.org/2000/svg','g');
+      for(let i=0;i<state.x.length;i++){ const xg=Math.round(xScale(state.x[i]))+0.5; const guide=document.createElementNS('http://www.w3.org/2000/svg','line'); guide.setAttribute('x1',xg); guide.setAttribute('x2',xg); guide.setAttribute('y1',pad.t); guide.setAttribute('y2',height-pad.b); guide.setAttribute('stroke','rgba(148,163,184,0.45)'); guide.setAttribute('stroke-width','1.5'); guide.setAttribute('stroke-dasharray','6 6'); gGuides.appendChild(guide); }
+      g.appendChild(gGuides);
+
+      // PMF group (on top of band/curve, before points)
+      const gPMF=document.createElementNS('http://www.w3.org/2000/svg','g');
+      for(let i=0;i<state.x.length;i++){ drawPMF(gPMF, xScale, yScale, innerW, state.x[i]); }
+      g.appendChild(gPMF);
+
+      // points (draggable for artificial)
+      for(let i=0;i<state.x.length;i++){ const cx=xScale(state.x[i]), cy=yScale(state.y[i]); const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx',cx); c.setAttribute('cy',cy); c.setAttribute('r',5); c.setAttribute('fill','#fbbf24'); c.setAttribute('stroke','rgba(245,158,11,0.7)'); c.setAttribute('class','point');
+        if (els.datasetSel.value==='artificial'){
+          c.style.cursor='move';
+          c.addEventListener('pointerdown',(e)=>{ c.setPointerCapture(e.pointerId); c.dragging=true; });
+          c.addEventListener('pointerup',()=>{ c.dragging=false; });
+          c.addEventListener('pointermove',(e)=>{ if(!c.dragging) return; const pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY; const M=svg.getScreenCTM(); if(!M) return; const cur=pt.matrixTransform(M.inverse()); const xd = xMin + (cur.x - pad.l)/innerW * (xMax - xMin); const yd = yMin + (1 - (cur.y - pad.t)/innerH) * (yMax - yMin); state.x[i]=xd; state.y[i]=Math.max(0,yd); c.setAttribute('cx',xScale(state.x[i])); c.setAttribute('cy',yScale(state.y[i])); updateReadouts(); });
+        }
+        g.appendChild(c);
+      }
+      svg.appendChild(g);
+      updateReadouts();
+    }
+
+    function drawPMF(g, xScale, yScale, innerW, xi){
+      const m=mu(xi); const th=state.theta; const v=(state.model==='pois')? m : (m + (m*m)/th); const sd=Math.sqrt(Math.max(1,v));
+      const kMin=Math.max(0, Math.floor(m - 3*sd)); const kMax=Math.floor(m + 3*sd);
+      const bars=Math.min(24, Math.max(6, kMax-kMin+1)); const step=Math.max(1, Math.floor((kMax-kMin+1)/bars));
+      const baseX=xScale(xi); const halfW=Math.max(12, Math.min(20, (innerW||300)*0.03));
+      // First pass: find max log pmf for normalization to [0,1]
+      let maxLog=-Infinity; for(let k=kMin;k<=kMax;k+=step){ let logpmf; if(state.model==='pois'){ logpmf = -m + k*log(Math.max(m,1e-12)) - (k>1? logGamma(k+1):0); } else { const th=state.theta; logpmf = logGamma(k+th) - logGamma(th) - (k>0? logGamma(k+1):0) + th*log(th/(th+m)) + k*log(m/(th+m)); } if (logpmf>maxLog) maxLog=logpmf; }
+      // Second pass: draw bars to the RIGHT of the x-guide using normalized probability
+      for(let k=kMin;k<=kMax;k+=step){ let logpmf; if(state.model==='pois'){ logpmf = -m + k*log(Math.max(m,1e-12)) - (k>1? logGamma(k+1):0); } else { const th=state.theta; logpmf = logGamma(k+th) - logGamma(th) - (k>0? logGamma(k+1):0) + th*log(th/(th+m)) + k*log(m/(th+m)); }
+        const pRel=Math.exp(Math.max(-50, logpmf - maxLog)); // numeric safety, shape only
+        const X1=Math.round(baseX)+0.5; const X2=Math.round(baseX + halfW*pRel)+0.5; const Y=yScale(k);
+        const line=document.createElementNS('http://www.w3.org/2000/svg','line'); line.setAttribute('x1', X1); line.setAttribute('x2', X2); line.setAttribute('y1', Y); line.setAttribute('y2', Y); line.setAttribute('stroke', '#93c5fd'); line.setAttribute('stroke-width','3'); line.setAttribute('stroke-opacity','0.9'); g.appendChild(line); }
+    }
+
+    // Readouts
+    function updateReadouts(){ const wDisp=Number.isFinite(state.w)?state.w:0; const bDisp=Number.isFinite(state.b)?state.b:0; const thDisp=Number.isFinite(state.theta)?state.theta:1; els.slopeVal.textContent=wDisp.toFixed(3); els.interceptVal.textContent=bDisp.toFixed(3); els.thetaVal.textContent=thDisp.toFixed(2); els.lrVal.textContent = `lr = ${Math.pow(10,state.lrExp).toFixed(5)}`; els.modelVal.textContent=(state.model==='pois'?'Poisson':'Negative Binomial'); els.wOut.textContent=wDisp.toFixed(3); els.bOut.textContent=bDisp.toFixed(3); if(state.model==='nb'){ els.thetaWrap.style.display=''; els.thetaOut.style.display=''; els.thetaOut.textContent=thDisp.toFixed(2);} else { els.thetaWrap.style.display='none'; els.thetaOut.style.display='none'; }
+      els.equation.innerHTML = `μ̂ = exp(<span style="color:#93c5fd">${state.w.toFixed(3)}</span> · x + <span style="color:#93c5fd">${state.b.toFixed(3)}</span>)`;
+      // table and totals
+      let total=0; const rows=state.x.map((x,i)=>{ const m=mu(x); const nll=(state.model==='pois')? nllPois(state.y[i], m) : nllNB(state.y[i], m, state.theta); total+=nll; return `<tr><td>${x.toFixed(2)}</td><td>${state.y[i].toFixed(0)}</td><td>${m.toFixed(2)}</td><td>${nll.toFixed(5)}</td></tr>`; }).join(''); els.tableBody.innerHTML=rows; els.nllTotal.textContent=`Total NLL = ${total.toFixed(5)}`; els.nllOut.textContent=total.toFixed(5); els.iter.textContent=String(train.iter); }
+
+    // Events
+    function setW(v){ state.w=parseFloat(v); train.iter=0; train.history=[]; render(); renderLoss(); }
+    function setB(v){ state.b=parseFloat(v); train.iter=0; train.history=[]; render(); renderLoss(); }
+    els.slope.addEventListener('input',(e)=> setW(e.target.value)); els.intercept.addEventListener('input',(e)=> setB(e.target.value));
+    els.theta.addEventListener('input',(e)=>{ state.theta=parseFloat(e.target.value); render(); });
+    els.lrExp.addEventListener('input',(e)=>{ state.lrExp=parseFloat(e.target.value); const lr = Math.pow(10,state.lrExp); els.lrVal.textContent=`lr = ${formatLr(lr)}`; });
+    els.modelSel.addEventListener('change',()=>{ state.model=els.modelSel.value; els.rowTheta.style.display=(state.model==='nb')?'':'none'; render(); });
+    els.datasetSel.addEventListener('change',()=>{ if(els.datasetSel.value==='covid') loadCovid(); else genArtificial(); train.iter=0; train.history=[]; render(); renderLoss(); });
+    els.fitOneBtn.addEventListener('click',()=>{ const {wNew,bNew,thNew,loss}=step(); state.w=wNew; state.b=bNew; if(state.model==='nb'){ state.theta=thNew; els.theta.value=state.theta; } train.iter+=1; train.history.push(loss); els.slope.value=state.w; els.intercept.value=state.b; render(); renderLoss(); });
+    els.fitNBtn.addEventListener('click',()=>{ const N=Math.max(1, parseInt(els.fitNInput.value||'1000',10)); let lastLoss=NaN; train.frame=0; for(let i=0;i<N;i++){ const {wNew,bNew,thNew,loss}=step(); state.w=wNew; state.b=bNew; if(state.model==='nb'){ state.theta=thNew; } train.iter+=1; lastLoss=loss; if (i % PERF.SAMPLE_INTERVAL === PERF.SAMPLE_INTERVAL-1 || i===N-1){ train.history.push(lastLoss); if (train.history.length>PERF.MAX_HISTORY) train.history.shift(); } } els.slope.value=state.w; els.intercept.value=state.b; if(state.model==='nb'){ els.theta.value=state.theta; } render(); renderLoss(); });
+    els.fitContBtn.addEventListener('click',()=>{ train.running=!train.running; train.stallCount=0; train.lastLoss=Infinity; train.frame=0; els.fitContBtn.textContent=train.running?'Stop Continuous Fit':'Start Continuous Fit'; const loop=()=>{ if(!train.running) return; let lastLoss=NaN; for(let i=0;i<PERF.STEPS_PER_FRAME;i++){ const {wNew,bNew,thNew,loss}=step(); state.w=wNew; state.b=bNew; if(state.model==='nb'){ state.theta=thNew; } train.iter+=1; lastLoss=loss; } if (!isNaN(lastLoss)){ train.history.push(lastLoss); if (train.history.length>PERF.MAX_HISTORY) train.history.shift(); }
+        train.frame++; if (train.frame % PERF.RENDER_EVERY === 0){ render(); } else { updateReadouts(); }
+        renderLoss(); if(!train.running){ els.fitContBtn.textContent='Start Continuous Fit'; return; } requestAnimationFrame(loop); };
+      if(train.running) requestAnimationFrame(loop); });
+    els.resetWBBtn.addEventListener('click',()=>{ state.w=0.30; state.b=2.00; train.iter=0; train.history=[]; render(); renderLoss(); });
+    window.addEventListener('resize',()=>{ render(); renderLoss(); });
+
+    // Init
+    function init(){
+      // Default dataset selection drives initialization; ensure data arrays are filled
+      if (els.datasetSel.value === 'covid') loadCovid(); else genArtificial();
+      render(); renderLoss();
+    }
+    init();
+  </script>
+</body>
+</html>
+
