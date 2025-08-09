@@ -25,19 +25,20 @@
           </div>
           <div class="legend" aria-hidden="true">
             <span><span class="swatch" style="background:#60a5fa"></span>Normal PDF</span>
-            <span><span class="swatch" style="background:#fbbf24"></span>Data points at y=0</span>
+            <span><span class="swatch" style="background:#fbbf24"></span>Data points</span>
           </div>
-
-          <table class="table" id="llTable" aria-label="Per-point density and log-density">
-            <thead>
-              <tr><th>x</th><th>f(x)</th><th>log f(x)</th></tr>
-            </thead>
-            <tbody></tbody>
-            <tfoot>
-              <tr class="sum"><td></td><td></td><td id="sumLogL">∑ log f(x) = 0.000</td></tr>
-              <tr class="sum"><td></td><td></td><td id="nllCell">NLL = 0.000</td></tr>
-            </tfoot>
-          </table>
+          <div class="table-wrap" style="max-height: 260px; overflow-y: auto; margin-top: 12px; border-radius: 10px;">
+            <table class="table" id="llTable" aria-label="Per-point density and log-density" style="margin-top:0;">
+              <thead style="position: sticky; top: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr><th>x</th><th>f(x)</th><th>log f(x)</th></tr>
+              </thead>
+              <tbody></tbody>
+              <tfoot style="position: sticky; bottom: 0; background: rgba(11,18,32,0.9); backdrop-filter: blur(2px); z-index: 1;">
+                <tr class="sum"><td></td><td></td><td id="sumLogL">∑ log f(x) = 0.000</td></tr>
+                <tr class="sum"><td></td><td></td><td id="nllCell">NLL = 0.000</td></tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -51,25 +52,20 @@
           <div class="controls" role="group" aria-label="Model controls">
             <div class="row">
               <div>
-                <label for="mu">μ (mean)</label>
+                <label for="mu">μ</label>
                 <input id="mu" class="slider" type="range" min="-5" max="5" step="0.01" value="0" aria-labelledby="mu" />
               </div>
               <div class="value" id="muVal">0.00</div>
             </div>
             <div class="row">
               <div>
-                <label for="sigma">σ (std dev)</label>
+                <label for="sigma">σ</label>
                 <input id="sigma" class="slider" type="range" min="0.1" max="5" step="0.01" value="1" aria-labelledby="sigma" />
               </div>
               <div class="value" id="sigmaVal">1.00</div>
             </div>
             <div class="buttons">
               <button id="fitBtn" class="primary" title="Compute MLE μ̂ and σ̂ for the dataset">Fit MLE</button>
-            </div>
-            <div class="eq" id="equation">
-              f(x) = 1/(σ√(2π)) · exp(-(x-μ)² / (2σ²))<br/>
-              <span style="color:#93c5fd">μ = <span id="muDisplay">0.00</span></span>,
-              <span style="color:#93c5fd">σ = <span id="sigmaDisplay">1.00</span></span>
             </div>
             <div class="kpi">
               <div>Negative log-likelihood:</div>
@@ -95,9 +91,6 @@
       sigma: document.getElementById('sigma'),
       muVal: document.getElementById('muVal'),
       sigmaVal: document.getElementById('sigmaVal'),
-      muDisplay: document.getElementById('muDisplay'),
-      sigmaDisplay: document.getElementById('sigmaDisplay'),
-      equation: document.getElementById('equation'),
       nll: document.getElementById('nll'),
       fitBtn: document.getElementById('fitBtn'),
       tableBody: document.getElementById('llTable').querySelector('tbody'),
@@ -148,8 +141,7 @@
     function updateReadouts(){
       els.muVal.textContent = state.mu.toFixed(2);
       els.sigmaVal.textContent = state.sigma.toFixed(2);
-      els.muDisplay.textContent = state.mu.toFixed(2);
-      els.sigmaDisplay.textContent = state.sigma.toFixed(2);
+      // equation block removed in this round
 
       // Table
       let sumLog = 0;
@@ -178,7 +170,7 @@
       const innerW = width - pad.l - pad.r;
       const innerH = height - pad.t - pad.b;
 
-      const xMin = -2, xMax = 2;
+      const xMin = -1, xMax = 3;
       function xScale(x){ return pad.l + (x - xMin)/(xMax - xMin) * innerW; }
 
       // Y domain based on PDF height; floor at 0
@@ -219,7 +211,9 @@
       const grid = document.createElementNS('http://www.w3.org/2000/svg','g');
       const axis = document.createElementNS('http://www.w3.org/2000/svg','g');
 
-      const xTicks = [-2, -1, 0, 1, 2];
+      // "Nice" integer ticks across [-1, 3]
+      const xTicks = [];
+      for (let v = Math.ceil(xMin); v <= Math.floor(xMax); v++) xTicks.push(v);
       const yTicks = niceTicks(yMin, yMax, 5);
 
       yTicks.forEach(v=>{
@@ -300,7 +294,7 @@
       yLabel.setAttribute('fill', '#9ca3af');
       yLabel.setAttribute('font-size', '12');
       yLabel.setAttribute('transform', `rotate(-90 14 ${yCenter})`);
-      yLabel.textContent = 'density f(x)';
+      yLabel.textContent = 'density f(x|μ,σ)';
       axis.appendChild(yLabel);
 
       svg.appendChild(axis);
@@ -327,7 +321,7 @@
       path.setAttribute('opacity','0.95');
       g.appendChild(path);
 
-      // Baseline y=0 guide (not clipped? Keep clipped to obey hygiene)
+      // Baseline y=0 guide (kept clipped to obey hygiene)
       const base = document.createElementNS('http://www.w3.org/2000/svg','line');
       base.setAttribute('x1', xScale(xMin));
       base.setAttribute('x2', xScale(xMax));
@@ -337,6 +331,24 @@
       base.setAttribute('stroke-width', '1');
       base.setAttribute('stroke-dasharray', '4 6');
       g.appendChild(base);
+
+      // Vertical connectors from (x_i, 0) to (x_i, f(x_i|μ,σ))
+      const gConn = document.createElementNS('http://www.w3.org/2000/svg','g');
+      gConn.setAttribute('shape-rendering', 'crispEdges');
+      for (let i=0;i<xs.length;i++){
+        const f = pdfNormal(xs[i], state.mu, state.sigma);
+        const X = Math.round(xScale(xs[i])) + 0.5; // pixel-snap
+        const conn = document.createElementNS('http://www.w3.org/2000/svg','line');
+        conn.setAttribute('x1', X);
+        conn.setAttribute('x2', X);
+        conn.setAttribute('y1', yScale(0));
+        conn.setAttribute('y2', yScale(f));
+        conn.setAttribute('stroke', '#60a5fa');
+        conn.setAttribute('stroke-opacity', '0.45');
+        conn.setAttribute('stroke-width', '1');
+        gConn.appendChild(conn);
+      }
+      g.appendChild(gConn);
 
       // Data points at y=0
       for (let i=0;i<xs.length;i++){
@@ -350,6 +362,11 @@
         c.setAttribute('stroke', 'rgba(245,158,11,0.7)');
         c.setAttribute('class', 'point');
         c.style.filter = 'drop-shadow(0 4px 10px rgba(251,191,36,0.35))';
+        const f = pdfNormal(xs[i], state.mu, state.sigma);
+        c.setAttribute('aria-label', `x = ${xs[i].toFixed(3)}, f(x) = ${f.toFixed(3)}`);
+        const title = document.createElementNS('http://www.w3.org/2000/svg','title');
+        title.textContent = `x = ${xs[i].toFixed(3)}, f(x) = ${f.toFixed(3)}`;
+        c.appendChild(title);
         g.appendChild(c);
       }
 
