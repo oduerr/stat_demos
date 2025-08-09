@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maximum Likelihood — Normal Distribution (μ, σ)</title>
+  <link rel="stylesheet" href="./shared/demo-shell.css">
+</head>
+<body>
+  <header>
+    <div class="title">Maximum Likelihood — Normal Distribution (μ, σ)</div>
+    <div class="subtitle">Adjust μ and σ to see the PDF and the negative log-likelihood for a fixed dataset. Press Fit MLE to compute the closed-form maximum likelihood estimates.</div>
+  </header>
+  <main>
+    <div class="grid">
+      <!-- Left: Plot + Table -->
+      <section class="card" aria-label="Normal PDF plot and data points">
+        <div class="card-header">
+          <div class="card-title">Normal PDF and Data</div>
+          <div class="badge">X-range [-2, 2]</div>
+        </div>
+        <div class="card-body">
+          <div class="plot-wrap">
+            <svg id="plot" role="img" aria-label="Normal PDF and data points"></svg>
+          </div>
+          <div class="legend" aria-hidden="true">
+            <span><span class="swatch" style="background:#60a5fa"></span>Normal PDF</span>
+            <span><span class="swatch" style="background:#fbbf24"></span>Data points at y=0</span>
+          </div>
+
+          <table class="table" id="llTable" aria-label="Per-point density and log-density">
+            <thead>
+              <tr><th>x</th><th>f(x)</th><th>log f(x)</th></tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+              <tr class="sum"><td></td><td></td><td id="sumLogL">∑ log f(x) = 0.000</td></tr>
+              <tr class="sum"><td></td><td></td><td id="nllCell">NLL = 0.000</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right: Controls -->
+      <section class="card" aria-label="Controls and KPI">
+        <div class="card-header">
+          <div class="card-title">Controls</div>
+          <div class="badge">Maximum Likelihood</div>
+        </div>
+        <div class="card-body">
+          <div class="controls" role="group" aria-label="Model controls">
+            <div class="row">
+              <div>
+                <label for="mu">μ (mean)</label>
+                <input id="mu" class="slider" type="range" min="-5" max="5" step="0.01" value="0" aria-labelledby="mu" />
+              </div>
+              <div class="value" id="muVal">0.00</div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="sigma">σ (std dev)</label>
+                <input id="sigma" class="slider" type="range" min="0.1" max="5" step="0.01" value="1" aria-labelledby="sigma" />
+              </div>
+              <div class="value" id="sigmaVal">1.00</div>
+            </div>
+            <div class="buttons">
+              <button id="fitBtn" class="primary" title="Compute MLE μ̂ and σ̂ for the dataset">Fit MLE</button>
+            </div>
+            <div class="eq" id="equation">
+              f(x) = 1/(σ√(2π)) · exp(-(x-μ)² / (2σ²))<br/>
+              <span style="color:#93c5fd">μ = <span id="muDisplay">0.00</span></span>,
+              <span style="color:#93c5fd">σ = <span id="sigmaDisplay">1.00</span></span>
+            </div>
+            <div class="kpi">
+              <div>Negative log-likelihood:</div>
+              <div class="pill" id="nll">0.000</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    // Data
+    const xs = [-0.033, -0.76, 2.02, 1.13, 0.65, 0.49, 0.76, 0.40, 0.10, 0.61];
+
+    // State
+    const state = { mu: 0.0, sigma: 1.0 };
+
+    // Elements
+    const els = {
+      plot: document.getElementById('plot'),
+      mu: document.getElementById('mu'),
+      sigma: document.getElementById('sigma'),
+      muVal: document.getElementById('muVal'),
+      sigmaVal: document.getElementById('sigmaVal'),
+      muDisplay: document.getElementById('muDisplay'),
+      sigmaDisplay: document.getElementById('sigmaDisplay'),
+      equation: document.getElementById('equation'),
+      nll: document.getElementById('nll'),
+      fitBtn: document.getElementById('fitBtn'),
+      tableBody: document.getElementById('llTable').querySelector('tbody'),
+      sumLogL: document.getElementById('sumLogL'),
+      nllCell: document.getElementById('nllCell')
+    };
+
+    // Math helpers
+    const PI2 = Math.PI * 2;
+    function pdfNormal(x, mu, sigma){
+      const z = (x - mu) / sigma;
+      return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(PI2));
+    }
+    function logPdfNormal(x, mu, sigma){
+      const z = (x - mu) / sigma;
+      return -Math.log(sigma) - 0.5*Math.log(PI2) - 0.5*z*z;
+    }
+    function sum(arr){ return arr.reduce((a,c)=>a+c,0); }
+    function mean(arr){ return sum(arr)/arr.length; }
+    function mleMu(arr){ return mean(arr); }
+    function mleSigma(arr, mu){
+      const n = arr.length;
+      let s = 0;
+      for (let i=0;i<n;i++){ const d = arr[i]-mu; s += d*d; }
+      return Math.sqrt(s/n);
+    }
+
+    // Axis helpers
+    function niceTicks(min, max, count){
+      const span = max - min;
+      const step0 = Math.pow(10, Math.floor(Math.log10(span / count)));
+      const err = (span / count) / step0;
+      let step;
+      if (err >= 5) step = 5 * step0; else if (err >= 2) step = 2 * step0; else step = step0;
+      const niceMin = Math.floor(min / step) * step;
+      const niceMax = Math.ceil(max / step) * step;
+      const ticks = [];
+      for (let v = niceMin; v <= niceMax + 1e-9; v += step) ticks.push(v);
+      return ticks;
+    }
+
+    function computeNLL(mu, sigma){
+      let s = 0;
+      for (let i=0;i<xs.length;i++) s += logPdfNormal(xs[i], mu, sigma);
+      return -s;
+    }
+
+    function updateReadouts(){
+      els.muVal.textContent = state.mu.toFixed(2);
+      els.sigmaVal.textContent = state.sigma.toFixed(2);
+      els.muDisplay.textContent = state.mu.toFixed(2);
+      els.sigmaDisplay.textContent = state.sigma.toFixed(2);
+
+      // Table
+      let sumLog = 0;
+      const rows = xs.map(x => {
+        const f = pdfNormal(x, state.mu, state.sigma);
+        const l = logPdfNormal(x, state.mu, state.sigma);
+        sumLog += l;
+        return `<tr><td>${x.toFixed(3)}</td><td>${f.toFixed(3)}</td><td>${l.toFixed(3)}</td></tr>`;
+      }).join('');
+      els.tableBody.innerHTML = rows;
+      els.sumLogL.textContent = `∑ log f(x) = ${sumLog.toFixed(3)}`;
+      const nllVal = -sumLog;
+      els.nll.textContent = nllVal.toFixed(3);
+      els.nllCell.textContent = `NLL = ${nllVal.toFixed(3)}`;
+    }
+
+    function render(){
+      const svg = els.plot;
+      const rect = svg.getBoundingClientRect();
+      const width = rect.width || 700;
+      const height = rect.height || 420;
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.innerHTML = '';
+
+      const pad = { l: 48, r: 16, t: 16, b: 36 };
+      const innerW = width - pad.l - pad.r;
+      const innerH = height - pad.t - pad.b;
+
+      const xMin = -2, xMax = 2;
+      function xScale(x){ return pad.l + (x - xMin)/(xMax - xMin) * innerW; }
+
+      // Y domain based on PDF height; floor at 0
+      let yMaxGuess = 0;
+      for (let i=0;i<=200;i++){
+        const x = xMin + (i/200) * (xMax - xMin);
+        const y = pdfNormal(x, state.mu, state.sigma);
+        if (y > yMaxGuess) yMaxGuess = y;
+      }
+      const yMin = 0, yMax = yMaxGuess * 1.1;
+      function yScale(y){ return pad.t + (1 - (y - yMin)/(yMax - yMin)) * innerH; }
+
+      // Defs: gradient + clip
+      const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+      const grad = document.createElementNS('http://www.w3.org/2000/svg','linearGradient');
+      grad.setAttribute('id', 'gradLine');
+      grad.setAttribute('x1','0'); grad.setAttribute('y1','0');
+      grad.setAttribute('x2','1'); grad.setAttribute('y2','1');
+      const s1 = document.createElementNS('http://www.w3.org/2000/svg','stop'); s1.setAttribute('offset','0%'); s1.setAttribute('stop-color','#93c5fd');
+      const s2 = document.createElementNS('http://www.w3.org/2000/svg','stop'); s2.setAttribute('offset','100%'); s2.setAttribute('stop-color','#22d3ee');
+      grad.appendChild(s1); grad.appendChild(s2);
+
+      const clip = document.createElementNS('http://www.w3.org/2000/svg','clipPath');
+      clip.setAttribute('id', 'plotClip');
+      const clipRect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      clipRect.setAttribute('x', pad.l);
+      clipRect.setAttribute('y', pad.t);
+      clipRect.setAttribute('width', innerW);
+      clipRect.setAttribute('height', innerH);
+      clip.appendChild(clipRect);
+
+      defs.appendChild(grad);
+      defs.appendChild(clip);
+      svg.appendChild(defs);
+
+      // Grid + axes
+      const axisColor = 'rgba(148,163,184,0.6)';
+      const grid = document.createElementNS('http://www.w3.org/2000/svg','g');
+      const axis = document.createElementNS('http://www.w3.org/2000/svg','g');
+
+      const xTicks = [-2, -1, 0, 1, 2];
+      const yTicks = niceTicks(yMin, yMax, 5);
+
+      yTicks.forEach(v=>{
+        const y = yScale(v);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', pad.l);
+        line.setAttribute('x2', width - pad.r);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        line.setAttribute('class', 'gridline');
+        grid.appendChild(line);
+      });
+      xTicks.forEach(v=>{
+        const x = xScale(v);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('y1', pad.t);
+        line.setAttribute('y2', height - pad.b);
+        line.setAttribute('x1', x);
+        line.setAttribute('x2', x);
+        line.setAttribute('class', 'gridline');
+        grid.appendChild(line);
+      });
+      svg.appendChild(grid);
+
+      const xAxis = document.createElementNS('http://www.w3.org/2000/svg','line');
+      xAxis.setAttribute('x1', pad.l);
+      xAxis.setAttribute('x2', width - pad.r);
+      xAxis.setAttribute('y1', height - pad.b);
+      xAxis.setAttribute('y2', height - pad.b);
+      xAxis.setAttribute('stroke', axisColor);
+      axis.appendChild(xAxis);
+
+      const yAxis = document.createElementNS('http://www.w3.org/2000/svg','line');
+      yAxis.setAttribute('y1', pad.t);
+      yAxis.setAttribute('y2', height - pad.b);
+      yAxis.setAttribute('x1', pad.l);
+      yAxis.setAttribute('x2', pad.l);
+      yAxis.setAttribute('stroke', axisColor);
+      axis.appendChild(yAxis);
+
+      xTicks.forEach(v=>{
+        const x = xScale(v);
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x', x);
+        t.setAttribute('y', height - 10);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('fill', '#9ca3af');
+        t.setAttribute('font-size', '12');
+        t.textContent = v.toFixed(0);
+        axis.appendChild(t);
+      });
+      yTicks.forEach(v=>{
+        const y = yScale(v);
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x', 8);
+        t.setAttribute('y', y + 4);
+        t.setAttribute('text-anchor', 'start');
+        t.setAttribute('fill', '#9ca3af');
+        t.setAttribute('font-size', '12');
+        t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(2);
+        axis.appendChild(t);
+      });
+
+      const xLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
+      xLabel.setAttribute('x', pad.l + innerW/2);
+      xLabel.setAttribute('y', height - 4);
+      xLabel.setAttribute('text-anchor', 'middle');
+      xLabel.setAttribute('fill', '#9ca3af');
+      xLabel.setAttribute('font-size', '12');
+      xLabel.textContent = 'x';
+      axis.appendChild(xLabel);
+
+      const yLabel = document.createElementNS('http://www.w3.org/2000/svg','text');
+      const yCenter = pad.t + innerH/2;
+      yLabel.setAttribute('x', 14);
+      yLabel.setAttribute('y', yCenter);
+      yLabel.setAttribute('text-anchor', 'middle');
+      yLabel.setAttribute('fill', '#9ca3af');
+      yLabel.setAttribute('font-size', '12');
+      yLabel.setAttribute('transform', `rotate(-90 14 ${yCenter})`);
+      yLabel.textContent = 'density f(x)';
+      axis.appendChild(yLabel);
+
+      svg.appendChild(axis);
+
+      // Plot content (clipped)
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      g.setAttribute('clip-path', 'url(#plotClip)');
+
+      // PDF path
+      const n = 400;
+      let d = '';
+      for (let i=0;i<=n;i++){
+        const x = xMin + (i/n) * (xMax - xMin);
+        const y = pdfNormal(x, state.mu, state.sigma);
+        const X = xScale(x);
+        const Y = yScale(y);
+        d += (i===0 ? 'M' : 'L') + X + ' ' + Y + ' ';
+      }
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', d.trim());
+      path.setAttribute('fill','none');
+      path.setAttribute('stroke','url(#gradLine)');
+      path.setAttribute('stroke-width','3');
+      path.setAttribute('opacity','0.95');
+      g.appendChild(path);
+
+      // Baseline y=0 guide (not clipped? Keep clipped to obey hygiene)
+      const base = document.createElementNS('http://www.w3.org/2000/svg','line');
+      base.setAttribute('x1', xScale(xMin));
+      base.setAttribute('x2', xScale(xMax));
+      base.setAttribute('y1', yScale(0));
+      base.setAttribute('y2', yScale(0));
+      base.setAttribute('stroke', 'rgba(148,163,184,0.25)');
+      base.setAttribute('stroke-width', '1');
+      base.setAttribute('stroke-dasharray', '4 6');
+      g.appendChild(base);
+
+      // Data points at y=0
+      for (let i=0;i<xs.length;i++){
+        const cx = xScale(xs[i]);
+        const cy = yScale(0);
+        const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('cx', cx);
+        c.setAttribute('cy', cy);
+        c.setAttribute('r', 5);
+        c.setAttribute('fill', '#fbbf24');
+        c.setAttribute('stroke', 'rgba(245,158,11,0.7)');
+        c.setAttribute('class', 'point');
+        c.style.filter = 'drop-shadow(0 4px 10px rgba(251,191,36,0.35))';
+        g.appendChild(c);
+      }
+
+      svg.appendChild(g);
+
+      updateReadouts();
+    }
+
+    // Events
+    function setMu(v){ state.mu = parseFloat(v); render(); }
+    function setSigma(v){ state.sigma = Math.max(0.1, parseFloat(v)); render(); }
+
+    els.mu.addEventListener('input', (e)=> setMu(e.target.value));
+    els.sigma.addEventListener('input', (e)=> setSigma(e.target.value));
+
+    els.fitBtn.addEventListener('click', ()=>{
+      const muHat = mleMu(xs);
+      const sigmaHat = Math.max(0.1, mleSigma(xs, muHat));
+      state.mu = muHat; state.sigma = sigmaHat;
+      els.mu.value = muHat; els.sigma.value = sigmaHat;
+      render();
+    });
+
+    window.addEventListener('resize', ()=> render());
+
+    // Init
+    function init(){
+      render();
+    }
+    init();
+  </script>
+</body>
+</html>
+
+
