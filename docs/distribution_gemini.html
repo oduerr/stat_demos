@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Center of Mass: Expected Value Demo</title>
+    <link rel="stylesheet" href="./shared/demo-shell.css">
+    <style>
+        /* Custom styles specific to this demo, overriding or supplementing demo-shell */
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            padding-top: 10px;
+            font-size: 1.1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: var(--primary-color, #4a90e2);
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="title">Expected Value as Center of Mass</div>
+        <div class="subtitle">
+            Explore how the Expected Value (E[X]) acts as the balancing point (center of mass) for probability
+            distributions.
+        </div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">Distribution Playground</div>
+                </div>
+                <div class="card-body">
+                    <!-- Controls Section -->
+                    <div class="controls"
+                        style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
+                        <div class="control-group">
+                            <label for="distSelect">Distribution</label>
+                            <select id="distSelect">
+                                <optgroup label="Discrete">
+                                    <option value="binomial" selected>Binomial</option>
+                                    <option value="poisson">Poisson</option>
+                                    <option value="geometric">Geometric</option>
+                                    <option value="negbinomial">Negative Binomial</option>
+                                    <option value="custom">Custom (Drag Bars)</option>
+                                </optgroup>
+                                <optgroup label="Continuous">
+                                    <option value="normal">Normal</option>
+                                    <option value="studentt">Student's t</option>
+                                    <option value="studentt_ls">Student's t (Loc-Scale)</option>
+                                    <option value="uniform">Uniform</option>
+                                    <option value="exponential">Exponential</option>
+                                    <option value="lognormal">Log-Normal</option>
+                                    <option value="gamma">Gamma</option>
+                                    <option value="beta">Beta</option>
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        <div id="paramsContainer" class="slider-container" style="flex-wrap: wrap;">
+                            <!-- Parameters will be injected here via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Visualization Section -->
+                    <div class="canvas-container" id="canvasWrapper">
+                        <canvas id="mainCanvas"></canvas>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="meanValue">0.00</span>
+                            <span class="stat-label">Mean (E[X])</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="stdValue">0.00</span>
+                            <span class="stat-label">Std Dev (σ)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        // --- Math Utilities ---
+        function factorial(n) {
+            if (n === 0 || n === 1) return 1;
+            let result = 1;
+            for (let i = 2; i <= n; i++) result *= i;
+            return result;
+        }
+
+        function combinations(n, k) {
+            if (k < 0 || k > n) return 0;
+            return factorial(n) / (factorial(k) * factorial(n - k));
+        }
+
+        // Lanczos approximation for Gamma function
+        function gamma(z) {
+            const p = [
+                676.5203681218851, -1259.1392167224028, 771.32342877765313,
+                -176.61502916214059, 12.507343278686905, -0.13857109526572012,
+                9.9843695780195716e-6, 1.5056327351493116e-7
+            ];
+            if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+            z -= 1;
+            let x = 0.99999999999980993;
+            for (let i = 0; i < p.length; i++) x += p[i] / (z + i + 1);
+            let t = z + p.length - 0.5;
+            return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+        }
+
+        function beta(x, y) {
+            return (gamma(x) * gamma(y)) / gamma(x + y);
+        }
+
+        // --- Distribution Classes ---
+        class Distribution {
+            constructor() {
+                this.params = {};
+                this.data = []; // Array of {x, p}
+                this.isContinuous = false;
+            }
+
+            calculate() {
+                // To be implemented by subclasses
+                this.data = [];
+            }
+
+            getMean() {
+                let sum = 0;
+                for (let point of this.data) {
+                    sum += point.x * point.p;
+                }
+                return sum;
+            }
+
+            getStdDev() {
+                let mean = this.getMean();
+                let variance = 0;
+                for (let point of this.data) {
+                    variance += point.p * Math.pow(point.x - mean, 2);
+                }
+                return Math.sqrt(variance);
+            }
+
+            getDescription() {
+                return "Distribution";
+            }
+        }
+
+        class ContinuousDistribution extends Distribution {
+            constructor() {
+                super();
+                this.isContinuous = true;
+            }
+
+            // Helper to generate points for plotting
+            generatePoints(minX, maxX, pdfFunc) {
+                this.data = [];
+                const steps = 200;
+                const stepSize = (maxX - minX) / steps;
+                for (let i = 0; i <= steps; i++) {
+                    const x = minX + i * stepSize;
+                    const p = pdfFunc(x);
+                    this.data.push({ x: x, p: p });
+                }
+            }
+        }
+
+        class Normal extends ContinuousDistribution {
+            constructor(mu = 0, sigma = 1) {
+                super();
+                this.params = {
+                    mu: { val: mu, min: -10, max: 10, step: 0.1, name: 'μ' },
+                    sigma: { val: sigma, min: 0.1, max: 5, step: 0.1, name: 'σ' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                const mu = this.params.mu.val;
+                const sigma = this.params.sigma.val;
+                const pdf = (x) => (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2));
+                // Plot range: mean +/- 4 std devs
+                this.generatePoints(mu - 4 * sigma, mu + 4 * sigma, pdf);
+            }
+
+            getMean() { return this.params.mu.val; }
+            getStdDev() { return this.params.sigma.val; }
+            getDescription() { return `X ~ Normal(μ=${this.params.mu.val}, σ=${this.params.sigma.val})`; }
+        }
+
+        class StudentT extends ContinuousDistribution {
+            constructor(nu = 5) {
+                super();
+                this.params = { nu: { val: nu, min: 1, max: 30, step: 0.1, name: 'ν' } };
+                this.calculate();
+            }
+
+            calculate() {
+                const nu = this.params.nu.val;
+                const pdf = (x) => {
+                    return (gamma((nu + 1) / 2) / (Math.sqrt(nu * Math.PI) * gamma(nu / 2))) * Math.pow(1 + (x * x) / nu, -(nu + 1) / 2);
+                };
+                this.generatePoints(-5, 5, pdf);
+            }
+
+            getMean() { return this.params.nu.val > 1 ? 0 : undefined; }
+            getStdDev() { return this.params.nu.val > 2 ? Math.sqrt(this.params.nu.val / (this.params.nu.val - 2)) : undefined; }
+            getDescription() { return `X ~ t(ν=${this.params.nu.val})`; }
+        }
+
+        class StudentTLocScale extends ContinuousDistribution {
+            constructor(nu = 5, mu = 0, sigma = 1) {
+                super();
+                this.params = {
+                    nu: { val: nu, min: 1, max: 30, step: 0.1, name: 'ν' },
+                    mu: { val: mu, min: -10, max: 10, step: 0.1, name: 'μ' },
+                    sigma: { val: sigma, min: 0.1, max: 5, step: 0.1, name: 'σ' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                const nu = this.params.nu.val;
+                const mu = this.params.mu.val;
+                const sigma = this.params.sigma.val;
+                const pdf = (x) => {
+                    const z = (x - mu) / sigma;
+                    return (gamma((nu + 1) / 2) / (Math.sqrt(nu * Math.PI) * gamma(nu / 2))) * Math.pow(1 + (z * z) / nu, -(nu + 1) / 2) / sigma;
+                };
+                this.generatePoints(mu - 5 * sigma, mu + 5 * sigma, pdf);
+            }
+
+            getMean() { return this.params.nu.val > 1 ? this.params.mu.val : undefined; }
+            getStdDev() { return this.params.nu.val > 2 ? this.params.sigma.val * Math.sqrt(this.params.nu.val / (this.params.nu.val - 2)) : undefined; }
+            getDescription() { return `X ~ t(ν=${this.params.nu.val}, μ=${this.params.mu.val}, σ=${this.params.sigma.val})`; }
+        }
+
+        class Uniform extends ContinuousDistribution {
+            constructor(a = -2, b = 2) {
+                super();
+                this.params = {
+                    a: { val: a, min: -10, max: 10, step: 0.1, name: 'a' },
+                    b: { val: b, min: -10, max: 10, step: 0.1, name: 'b' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                let a = Math.min(this.params.a.val, this.params.b.val);
+                let b = Math.max(this.params.a.val, this.params.b.val);
+                if (a === b) b += 0.1; // Avoid division by zero
+                const pdf = (x) => (x >= a && x <= b) ? 1 / (b - a) : 0;
+                this.generatePoints(a - 1, b + 1, pdf);
+            }
+
+            getMean() { return (this.params.a.val + this.params.b.val) / 2; }
+            getStdDev() { return Math.abs(this.params.b.val - this.params.a.val) / Math.sqrt(12); }
+            getDescription() { return `X ~ U(${this.params.a.val}, ${this.params.b.val})`; }
+        }
+
+        class Exponential extends ContinuousDistribution {
+            constructor(lambda = 1) {
+                super();
+                this.params = { lambda: { val: lambda, min: 0.1, max: 5, step: 0.1, name: 'λ' } };
+                this.calculate();
+            }
+
+            calculate() {
+                const lambda = this.params.lambda.val;
+                const pdf = (x) => (x >= 0) ? lambda * Math.exp(-lambda * x) : 0;
+                this.generatePoints(0, 10 / lambda, pdf);
+            }
+
+            getMean() { return 1 / this.params.lambda.val; }
+            getStdDev() { return 1 / this.params.lambda.val; }
+            getDescription() { return `X ~ Exp(λ=${this.params.lambda.val})`; }
+        }
+
+        class LogNormal extends ContinuousDistribution {
+            constructor(mu = 0, sigma = 0.5) {
+                super();
+                this.params = {
+                    mu: { val: mu, min: -2, max: 2, step: 0.1, name: 'μ' },
+                    sigma: { val: sigma, min: 0.1, max: 2, step: 0.1, name: 'σ' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                const mu = this.params.mu.val;
+                const sigma = this.params.sigma.val;
+                const pdf = (x) => {
+                    if (x <= 0) return 0;
+                    return (1 / (x * sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-Math.pow(Math.log(x) - mu, 2) / (2 * sigma * sigma));
+                };
+                this.generatePoints(0, Math.exp(mu + 3 * sigma), pdf);
+            }
+
+            getMean() { return Math.exp(this.params.mu.val + (this.params.sigma.val ** 2) / 2); }
+            getStdDev() {
+                const s2 = this.params.sigma.val ** 2;
+                return Math.sqrt((Math.exp(s2) - 1) * Math.exp(2 * this.params.mu.val + s2));
+            }
+            getDescription() { return `X ~ LogNormal(μ=${this.params.mu.val}, σ=${this.params.sigma.val})`; }
+        }
+
+        class GammaDist extends ContinuousDistribution {
+            constructor(k = 2, theta = 2) {
+                super();
+                this.params = {
+                    k: { val: k, min: 0.5, max: 10, step: 0.1, name: 'k' },
+                    theta: { val: theta, min: 0.5, max: 5, step: 0.1, name: 'θ' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                const k = this.params.k.val;
+                const theta = this.params.theta.val;
+                const pdf = (x) => {
+                    if (x <= 0) return 0;
+                    return (Math.pow(x, k - 1) * Math.exp(-x / theta)) / (Math.pow(theta, k) * gamma(k));
+                };
+                this.generatePoints(0, k * theta + 4 * Math.sqrt(k * theta * theta), pdf);
+            }
+
+            getMean() { return this.params.k.val * this.params.theta.val; }
+            getStdDev() { return Math.sqrt(this.params.k.val * Math.pow(this.params.theta.val, 2)); }
+            getDescription() { return `X ~ Gamma(k=${this.params.k.val}, θ=${this.params.theta.val})`; }
+        }
+
+        class BetaDist extends ContinuousDistribution {
+            constructor(alpha = 2, betaParam = 2) {
+                super();
+                this.params = {
+                    alpha: { val: alpha, min: 0.5, max: 10, step: 0.1, name: 'α' },
+                    beta: { val: betaParam, min: 0.5, max: 10, step: 0.1, name: 'β' }
+                };
+                this.calculate();
+            }
+
+            calculate() {
+                const a = this.params.alpha.val;
+                const b = this.params.beta.val;
+                const pdf = (x) => {
+                    if (x < 0 || x > 1) return 0;
+                    return (Math.pow(x, a - 1) * Math.pow(1 - x, b - 1)) / beta(a, b);
+                };
+                this.generatePoints(0, 1, pdf);
+            }
+
+            getMean() { return this.params.alpha.val / (this.params.alpha.val + this.params.beta.val); }
+            getStdDev() {
+                const a = this.params.alpha.val;
+                const b = this.params.beta.val;
+                return Math.sqrt((a * b) / (Math.pow(a + b, 2) * (a + b + 1)));
+            }
+            getDescription() { return `X ~ Beta(α=${this.params.alpha.val}, β=${this.params.beta.val})`; }
+        }
+
+        class Binomial extends Distribution {
+            constructor(n = 20, p = 0.6) {
+                super();
+                this.params = { n: { val: n, min: 1, max: 40, step: 1, name: 'n' }, p: { val: p, min: 0.01, max: 0.99, step: 0.01, name: 'p' } };
+                this.calculate();
+            }
+
+            calculate() {
+                this.data = [];
+                const n = this.params.n.val;
+                const p = this.params.p.val;
+                for (let k = 0; k <= n; k++) {
+                    const prob = combinations(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
+                    this.data.push({ x: k, p: prob });
+                }
+            }
+
+            getDescription() {
+                return `X ~ Binomial(n=${this.params.n.val}, p=${this.params.p.val})`;
+            }
+        }
+
+        class Poisson extends Distribution {
+            constructor(lambda = 5) {
+                super();
+                this.params = { lambda: { val: lambda, min: 0.1, max: 15, step: 0.1, name: 'λ' } };
+                this.calculate();
+            }
+
+            calculate() {
+                this.data = [];
+                const lambda = this.params.lambda.val;
+                // Cutoff when prob is very small
+                let k = 0;
+                while (true) {
+                    const prob = (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial(k);
+                    if (prob < 0.0001 && k > lambda) break;
+                    this.data.push({ x: k, p: prob });
+                    k++;
+                    if (k > 30) break; // Safety limit
+                }
+            }
+
+            getDescription() {
+                return `X ~ Poisson(λ=${this.params.lambda.val})`;
+            }
+        }
+
+        class Geometric extends Distribution {
+            constructor(p = 0.5) {
+                super();
+                this.params = { p: { val: p, min: 0.1, max: 0.9, step: 0.01, name: 'p' } };
+                this.calculate();
+            }
+
+            calculate() {
+                this.data = [];
+                const p = this.params.p.val;
+                let k = 1; // Geometric usually starts at 1 for trials
+                while (true) {
+                    const prob = Math.pow(1 - p, k - 1) * p;
+                    if (prob < 0.001 && k > 5) break;
+                    this.data.push({ x: k, p: prob });
+                    k++;
+                    if (k > 30) break;
+                }
+            }
+
+            getDescription() {
+                return `X ~ Geometric(p=${this.params.p.val})`;
+            }
+        }
+
+        class NegativeBinomial extends Distribution {
+            constructor(r = 3, p = 0.5) {
+                super();
+                this.params = { r: { val: r, min: 1, max: 10, step: 1, name: 'r' }, p: { val: p, min: 0.1, max: 0.9, step: 0.01, name: 'p' } };
+                this.calculate();
+            }
+
+            calculate() {
+                this.data = [];
+                const r = this.params.r.val;
+                const p = this.params.p.val;
+                let k = 0; // Failures
+                while (true) {
+                    // Prob of k failures before r successes
+                    const prob = combinations(k + r - 1, k) * Math.pow(1 - p, k) * Math.pow(p, r);
+                    if (prob < 0.001 && k > 10) break;
+                    this.data.push({ x: k, p: prob }); // x represents failures here
+                    k++;
+                    if (k > 40) break;
+                }
+            }
+
+            getDescription() {
+                return `X ~ NegBinomial(r=${this.params.r.val}, p=${this.params.p.val})`;
+            }
+        }
+
+        class CustomDistribution extends Distribution {
+            constructor() {
+                super();
+                this.params = {};
+                // Initialize with some dummy data
+                this.data = [
+                    { x: 0, p: 0.1 }, { x: 1, p: 0.2 }, { x: 2, p: 0.4 }, { x: 3, p: 0.2 }, { x: 4, p: 0.1 }
+                ];
+            }
+
+            calculate() {
+                // No-op, data is modified directly
+            }
+
+            normalize() {
+                const total = this.data.reduce((sum, pt) => sum + pt.p, 0);
+                if (total > 0) {
+                    this.data.forEach(pt => pt.p /= total);
+                }
+            }
+
+            getDescription() {
+                return "X ~ Custom Distribution";
+            }
+        }
+
+        // --- App Controller ---
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const distSelect = document.getElementById('distSelect');
+        const paramsContainer = document.getElementById('paramsContainer');
+        const meanDisplay = document.getElementById('meanValue');
+        const stdDisplay = document.getElementById('stdValue');
+
+        // Add Auto-Zoom Checkbox
+        const autoZoomContainer = document.createElement('div');
+        autoZoomContainer.className = 'control-group';
+        autoZoomContainer.style.marginTop = '10px';
+        autoZoomContainer.style.borderTop = '1px solid #eee';
+        autoZoomContainer.style.paddingTop = '10px';
+        autoZoomContainer.innerHTML = `
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="autoZoom" checked>
+                <span style="font-weight: 500; color: #333;">Auto-Zoom</span>
+            </label>
+        `;
+        // Insert after paramsContainer
+        paramsContainer.parentNode.insertBefore(autoZoomContainer, paramsContainer.nextSibling);
+
+        const autoZoomCheckbox = document.getElementById('autoZoom');
+
+        // Initial distribution
+        let currentDist = new Binomial();
+        let isDragging = false;
+        let dragIndex = -1;
+        // dragStart and dragMode are declared later, removing duplicates here.
+
+        // View State for Camera Catch-up
+        let viewState = {
+            minX: -1,
+            maxX: 20,
+            maxP: 1,
+            isLocked: false,
+            isAnimating: false,
+            targetMinX: -1,
+            targetMaxX: 20,
+            targetMaxP: 1,
+            animationStartTime: 0,
+            animationDuration: 500
+        };
+
+        // Resize canvas
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function getIdealRange() {
+            let minX = 0;
+            let maxX = 0;
+            let maxP = 0.5; // Default
+            if (currentDist.data.length > 0) {
+                minX = Math.min(...currentDist.data.map(d => d.x));
+                maxX = Math.max(...currentDist.data.map(d => d.x));
+                maxP = Math.max(...currentDist.data.map(d => d.p));
+            }
+
+            const xRange = maxX - minX;
+            let padding = xRange * 0.05;
+            if (padding === 0) padding = 1;
+
+            let idealMin = minX - padding;
+            let idealMax = maxX + padding;
+
+            if (!currentDist.isContinuous) {
+                idealMin = Math.min(idealMin, -0.5);
+                idealMax = Math.max(idealMax, Math.max(...currentDist.data.map(d => d.x)) + 0.5);
+            }
+
+            let idealMaxP = Math.max(maxP, 0.01) * 1.1; // 10% headroom
+
+            return { min: idealMin, max: idealMax, maxP: idealMaxP };
+        }
+
+        function animateView(timestamp) {
+            if (!viewState.isAnimating) return;
+
+            const progress = Math.min((timestamp - viewState.animationStartTime) / viewState.animationDuration, 1);
+            // Ease-out cubic
+            const ease = 1 - Math.pow(1 - progress, 3);
+
+            viewState.minX = viewState.startMinX + (viewState.targetMinX - viewState.startMinX) * ease;
+            viewState.maxX = viewState.startMaxX + (viewState.targetMaxX - viewState.startMaxX) * ease;
+            viewState.maxP = viewState.startMaxP + (viewState.targetMaxP - viewState.startMaxP) * ease;
+
+            draw();
+
+            if (progress < 1) {
+                requestAnimationFrame(animateView);
+            } else {
+                viewState.isAnimating = false;
+                viewState.minX = viewState.targetMinX;
+                viewState.maxX = viewState.targetMaxX;
+                viewState.maxP = viewState.targetMaxP;
+                draw();
+            }
+        }
+
+        function startAnimation() {
+            if (!autoZoomCheckbox.checked) return; // No animation if auto-zoom is off
+
+            const ideal = getIdealRange();
+            viewState.targetMinX = ideal.min;
+            viewState.targetMaxX = ideal.max;
+            viewState.targetMaxP = ideal.maxP;
+
+            viewState.startMinX = viewState.minX;
+            viewState.startMaxX = viewState.maxX;
+            viewState.startMaxP = viewState.maxP;
+
+            // Only animate if change is significant
+            if (Math.abs(viewState.targetMinX - viewState.minX) > 0.01 ||
+                Math.abs(viewState.targetMaxX - viewState.maxX) > 0.01 ||
+                Math.abs(viewState.targetMaxP - viewState.maxP) > 0.001) {
+                viewState.isAnimating = true;
+                viewState.animationStartTime = performance.now();
+                requestAnimationFrame(animateView);
+            } else {
+                viewState.minX = ideal.min;
+                viewState.maxX = ideal.max;
+                viewState.maxP = ideal.maxP;
+                draw();
+            }
+        }
+
+        // UI Setup
+        function setupParamsUI() {
+            paramsContainer.innerHTML = '';
+            if (currentDist instanceof CustomDistribution) {
+                paramsContainer.innerHTML = '<span style="font-size: 0.9rem; color: #666;">Drag bars vertically to change probability, horizontally to move value.</span>';
+                return;
+            }
+
+            for (let key in currentDist.params) {
+                const param = currentDist.params[key];
+                const wrapper = document.createElement('div');
+                wrapper.className = 'control-group';
+
+                const label = document.createElement('label');
+                label.textContent = `${param.name} = ${param.val}`;
+
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = param.min;
+                slider.max = param.max;
+                slider.step = param.step;
+                slider.value = param.val;
+
+                // Camera Catch-up Logic
+                slider.addEventListener('mousedown', () => {
+                    if (autoZoomCheckbox.checked) {
+                        viewState.isLocked = true;
+                        viewState.isAnimating = false; // Stop any ongoing animation
+                    }
+                });
+
+                slider.addEventListener('mouseup', () => {
+                    if (autoZoomCheckbox.checked) {
+                        viewState.isLocked = false;
+                        startAnimation();
+                    }
+                });
+
+                slider.addEventListener('input', (e) => {
+                    param.val = parseFloat(e.target.value);
+                    label.textContent = `${param.name} = ${param.val}`;
+                    currentDist.calculate();
+
+                    if (autoZoomCheckbox.checked) {
+                        if (!viewState.isLocked && !viewState.isAnimating) {
+                            // Instant update if not locked (e.g. programmatic change or initial load)
+                            // But for slider drag, isLocked is true, so we don't update viewState here
+                            const ideal = getIdealRange();
+                            viewState.minX = ideal.min;
+                            viewState.maxX = ideal.max;
+                            viewState.maxP = ideal.maxP;
+                        }
+                    }
+                    // If autoZoom is unchecked, we just don't update viewState, so it stays fixed.
+
+                    draw();
+                    updateStats();
+                });
+
+                wrapper.appendChild(label);
+                wrapper.appendChild(slider);
+                paramsContainer.appendChild(wrapper);
+            }
+        }
+
+        distSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            switch (val) {
+                case 'binomial': currentDist = new Binomial(); break;
+                case 'poisson': currentDist = new Poisson(); break;
+                case 'geometric': currentDist = new Geometric(); break;
+                case 'negbinomial': currentDist = new NegativeBinomial(); break;
+                case 'custom': currentDist = new CustomDistribution(); break;
+                case 'normal': currentDist = new Normal(); break;
+                case 'studentt': currentDist = new StudentT(); break;
+                case 'studentt_ls': currentDist = new StudentTLocScale(); break;
+                case 'uniform': currentDist = new Uniform(); break;
+                case 'exponential': currentDist = new Exponential(); break;
+                case 'lognormal': currentDist = new LogNormal(); break;
+                case 'gamma': currentDist = new GammaDist(); break;
+                case 'beta': currentDist = new BetaDist(); break;
+            }
+
+            // Reset view state on distribution change
+            currentDist.calculate(); // Ensure data is ready
+            const ideal = getIdealRange();
+            viewState.minX = ideal.min;
+            viewState.maxX = ideal.max;
+            viewState.maxP = ideal.maxP;
+            viewState.isLocked = false;
+            viewState.isAnimating = false;
+
+            setupParamsUI();
+            draw();
+            updateStats();
+        });
+
+        // Drawing Logic
+        function draw() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const padding = { top: 60, right: 40, bottom: 60, left: 80 }; // Increased top padding for title
+            const plotW = w - padding.left - padding.right;
+            const plotH = h - padding.top - padding.bottom;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Title
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 18px Inter';
+            ctx.fillText(currentDist.getDescription(), w / 2, 30);
+
+            // Scales using ViewState
+            const minX = viewState.minX;
+            const maxX = viewState.maxX;
+            const maxP = viewState.maxP;
+
+            const xScale = (x) => padding.left + ((x - minX) / (maxX - minX)) * plotW;
+            const yScale = (p) => h - padding.bottom - (p / maxP) * plotH;
+
+            // Draw Axes
+            ctx.beginPath();
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 2;
+            ctx.moveTo(padding.left, padding.top);
+            ctx.lineTo(padding.left, h - padding.bottom); // Y axis
+            ctx.lineTo(w - padding.right, h - padding.bottom); // X axis
+            ctx.stroke();
+
+            // Static Vertical Line at x=0
+            if (minX <= 0 && maxX >= 0) {
+                const x0 = xScale(0);
+                ctx.beginPath();
+                ctx.strokeStyle = '#ddd';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(x0, padding.top);
+                ctx.lineTo(x0, h - padding.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset
+            }
+
+            // Y-Axis Ticks and Values
+            ctx.fillStyle = '#666';
+            ctx.font = '10px Inter';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+
+            let tickStep = maxP / 5;
+            for (let i = 0; i <= 5; i++) {
+                const p = i * tickStep;
+                const y = yScale(p);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(padding.left - 5, y);
+                ctx.stroke();
+                ctx.fillText(p.toFixed(2), padding.left - 8, y);
+            }
+
+            // Y-Axis Label
+            ctx.save();
+            ctx.translate(20, h / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#666';
+            ctx.font = '14px Inter';
+            ctx.fillText(currentDist.isContinuous ? 'Probability Density' : 'Probability', 0, 0);
+            ctx.restore();
+
+            // Draw Distribution
+            if (currentDist.isContinuous) {
+                // Draw Curve
+                ctx.beginPath();
+                ctx.moveTo(xScale(currentDist.data[0].x), yScale(currentDist.data[0].p));
+                for (let i = 1; i < currentDist.data.length; i++) {
+                    ctx.lineTo(xScale(currentDist.data[i].x), yScale(currentDist.data[i].p));
+                }
+                // Close path for fill
+                ctx.lineTo(xScale(currentDist.data[currentDist.data.length - 1].x), h - padding.bottom);
+                ctx.lineTo(xScale(currentDist.data[0].x), h - padding.bottom);
+                ctx.closePath();
+
+                ctx.fillStyle = 'rgba(74, 144, 226, 0.2)';
+                ctx.fill();
+
+                // Stroke
+                ctx.beginPath();
+                ctx.moveTo(xScale(currentDist.data[0].x), yScale(currentDist.data[0].p));
+                for (let i = 1; i < currentDist.data.length; i++) {
+                    ctx.lineTo(xScale(currentDist.data[i].x), yScale(currentDist.data[i].p));
+                }
+                ctx.strokeStyle = 'rgba(74, 144, 226, 1)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // X-axis labels (just min/max for now or some steps)
+                ctx.fillStyle = '#666';
+                ctx.textAlign = 'center';
+                const xStep = (maxX - minX) / 5; // 5 ticks for continuous
+                for (let i = 0; i <= 5; i++) {
+                    const val = minX + i * xStep;
+                    const xPos = xScale(val);
+                    ctx.fillText(val.toFixed(1), xPos, h - padding.bottom + 20);
+                }
+
+            } else {
+                // Draw Lollipop Plot (Discrete)
+                // barWidth is now relative to the new minX/maxX scale
+                const barWidth = (plotW / (maxX - minX)) * 0.6;
+                currentDist.data.forEach((d, i) => {
+                    const x = xScale(d.x); // Discrete points are exact
+                    const y = yScale(d.p);
+                    const groundY = h - padding.bottom;
+
+                    // Line
+                    ctx.beginPath();
+                    ctx.moveTo(x, groundY);
+                    ctx.lineTo(x, y);
+                    ctx.strokeStyle = 'rgba(74, 144, 226, 0.7)';
+                    ctx.lineWidth = 2;
+                    if (currentDist instanceof CustomDistribution && i === dragIndex) {
+                        ctx.strokeStyle = 'rgba(74, 144, 226, 0.9)';
+                        ctx.lineWidth = 3;
+                    }
+                    ctx.stroke();
+
+                    // Dot
+                    ctx.beginPath();
+                    ctx.arc(x, y, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(74, 144, 226, 1)';
+                    if (currentDist instanceof CustomDistribution && i === dragIndex) {
+                        ctx.fillStyle = '#2a6ebb';
+                    }
+                    ctx.fill();
+
+                    // X labels
+                    ctx.fillStyle = '#666';
+                    ctx.font = '12px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(d.x, x, h - padding.bottom + 20);
+                });
+            }
+
+            // Draw Fulcrum (Mean)
+            const mean = currentDist.getMean();
+            if (mean !== undefined && !isNaN(mean)) {
+                const fulcrumX = xScale(mean);
+                const fulcrumY = h - padding.bottom;
+
+                // Draw Triangle
+                ctx.beginPath();
+                ctx.fillStyle = '#f5a623';
+                ctx.moveTo(fulcrumX, fulcrumY);
+                ctx.lineTo(fulcrumX - 10, fulcrumY + 15);
+                ctx.lineTo(fulcrumX + 10, fulcrumY + 15);
+                ctx.closePath();
+                ctx.fill();
+
+                // Draw Std Dev indicators
+                const std = currentDist.getStdDev();
+                if (std !== undefined && !isNaN(std)) {
+                    const sigmaY = fulcrumY + 25;
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#f5a623';
+                    ctx.lineWidth = 2;
+                    // Line from mean-std to mean+std
+                    const startX = xScale(mean - std);
+                    const endX = xScale(mean + std);
+
+                    ctx.moveTo(startX, sigmaY);
+                    ctx.lineTo(endX, sigmaY);
+                    ctx.stroke();
+
+                    // Caps for std dev line
+                    ctx.beginPath();
+                    ctx.moveTo(startX, sigmaY - 5);
+                    ctx.lineTo(startX, sigmaY + 5);
+                    ctx.moveTo(endX, sigmaY - 5);
+                    ctx.lineTo(endX, sigmaY + 5);
+                    ctx.stroke();
+                }
+
+                // Label for Mean
+                ctx.fillStyle = '#f5a623';
+                ctx.font = 'bold 14px Inter';
+                ctx.fillText('▲', fulcrumX, fulcrumY + 12);
+            }
+        }
+
+        function updateStats() {
+            const mean = currentDist.getMean();
+            const std = currentDist.getStdDev();
+            meanDisplay.textContent = mean !== undefined && !isNaN(mean) ? mean.toFixed(2) : 'N/A';
+            stdDisplay.textContent = std !== undefined && !isNaN(std) ? std.toFixed(2) : 'N/A';
+        }
+
+        // Interaction Logic
+        let dragStart = { x: 0, y: 0 };
+        let dragMode = null; // 'vertical' or 'horizontal'
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!(currentDist instanceof CustomDistribution)) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Check if clicked on a bar
+            const w = canvas.width;
+            const h = canvas.height;
+            const padding = { top: 40, right: 40, bottom: 60, left: 80 };
+            const plotW = w - padding.left - padding.right;
+            const maxX = Math.max(...currentDist.data.map(d => d.x)) + 1;
+            const xScale = (x) => padding.left + (x / maxX) * plotW;
+            const barWidth = (plotW / maxX) * 0.6;
+
+            currentDist.data.forEach((d, i) => {
+                const x = xScale(d.x);
+                if (mouseX >= x && mouseX <= x + barWidth) {
+                    isDragging = true;
+                    dragIndex = i;
+                    dragStart = { x: mouseX, y: mouseY };
+                    dragMode = null; // Determine on move
+                }
+            });
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging || dragIndex === -1) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (!dragMode) {
+                const dx = Math.abs(mouseX - dragStart.x);
+                const dy = Math.abs(mouseY - dragStart.y);
+                if (dx > 5 || dy > 5) {
+                    dragMode = dx > dy ? 'horizontal' : 'vertical';
+                } else {
+                    return; // Wait for significant movement
+                }
+            }
+
+            const h = canvas.height;
+            const padding = { top: 40, right: 40, bottom: 60, left: 80 };
+            const plotW = canvas.width - padding.left - padding.right;
+            const plotH = h - padding.top - padding.bottom;
+            const maxX = Math.max(...currentDist.data.map(d => d.x)) + 1;
+            const maxP = Math.max(...currentDist.data.map(d => d.p), 0.5);
+
+            if (dragMode === 'vertical') {
+                let newP = (h - padding.bottom - mouseY) / plotH * maxP;
+                newP = Math.max(0, newP);
+                currentDist.data[dragIndex].p = newP;
+                currentDist.normalize();
+            } else if (dragMode === 'horizontal') {
+                // Calculate new X based on mouse position
+                // Inverse of xScale: x = (mouseX - padding.left) / plotW * maxX
+                let newX = Math.round((mouseX - padding.left) / plotW * maxX);
+                newX = Math.max(0, newX); // No negative x
+
+                // Check if we moved to a new integer X
+                if (newX !== currentDist.data[dragIndex].x) {
+                    // Check collision
+                    const existing = currentDist.data.find((d, i) => i !== dragIndex && d.x === newX);
+                    if (existing) {
+                        // Collision handling: For now, just allow overlap or maybe don't move?
+                        // Let's allow overlap, it will look like one bar on top of another or similar.
+                        // Actually, let's just update x.
+                        currentDist.data[dragIndex].x = newX;
+                    } else {
+                        currentDist.data[dragIndex].x = newX;
+                    }
+                }
+            }
+
+            draw();
+            updateStats();
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging && dragMode === 'horizontal') {
+                // Clean up duplicates if we want to merge?
+                // For now, let's just sort data by x for cleaner rendering
+                currentDist.data.sort((a, b) => a.x - b.x);
+
+                // Optional: Merge duplicates
+                const merged = [];
+                if (currentDist.data.length > 0) {
+                    let current = { ...currentDist.data[0] }; // Clone to avoid modifying original in loop
+                    for (let i = 1; i < currentDist.data.length; i++) {
+                        if (currentDist.data[i].x === current.x) {
+                            current.p += currentDist.data[i].p;
+                        } else {
+                            merged.push(current);
+                            current = { ...currentDist.data[i] }; // Clone
+                        }
+                    }
+                    merged.push(current);
+                    currentDist.data = merged;
+                }
+                draw(); // Redraw with merged data
+            }
+
+            isDragging = false;
+            dragIndex = -1;
+            dragMode = null;
+        });
+
+        // Init
+        resizeCanvas();
+        setupParamsUI();
+        updateStats();
+
+    </script>
+</body>
+
+</html>

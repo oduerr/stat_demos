@@ -90,11 +90,11 @@ After this, create or paste the result into `requirements.md` in Cursor, pin it.
 
 - Test changes in your dev environment  
 - Note issues or missing features  
-- Add a new “Round” section in the requirements file via the 💬 Assistant.
-  - I did extra files but I it's better to add sections to the existing file to keep the context.
-- Use ChatGPT or 'cursor ask' for minor fixes and clarifications.
 
-💡 **Note:** If only small changes are needed, you may skip the assistant and talk **directly to the agent** for quick fixes.
+There are three ways to handle changes:
+- Minor tweaks you can code yourself (e.g., adjust a title, change a constant) → just do them directly in your editor.
+-  Minor tweaks via Agent (e.g., rename a variable, small refactor) → let the Agent apply them directly, no need to update requirements.
+- Substantive changes (new features, altered logic, UI changes) → first update the requirements file as the single source of truth. These can then be implemented either directly by you or via the Assistant.
 
 ---
 
@@ -103,7 +103,8 @@ After this, create or paste the result into `requirements.md` in Cursor, pin it.
 - Improve UI, names, style, docs  
 - Avoid new features here — stay on scope  
 - Can involve **multiple agents** ⚙️,⚙️,⚙️
-  - e.g., one for refactoring, one for docs.  
+  - e.g., one for refactoring, one for docs
+  - You might want to create github issues for that  
 - For very minor edits (e.g., changing a title), I sometimes code directly myself.
 
 ---
@@ -122,6 +123,36 @@ Use when:
 
 ---
 
+## Working with Multiple Agents
+I did not try this yet but I think it's a good idea.
+
+- Try to let them work on different parts of the codebase (UI vs Test)
+- Add instrructions to requirements file or use github issues for that.
+- Example:
+```
+## Round 4 – Scope Update
+- Added chart zoom feature  
+...
+### Issue I-001 – Rename controls for clarity
+- Change “Learning Rate” → “LR”  
+- Update tooltip text accordingly  
+Acceptance: All references updated, no layout change
+
+### Issue I-002 – Extract plotting utils
+- Move helpers to src/utils/plot.ts  
+- Update imports, ensure tests pass
+```
+
+Promt:
+```
+Work on Issue I-011 from requirements.md.  
+Follow all general rules in requirements.md and AGENT_RULES.md.  
+Do not make changes outside the scope of this issue.  
+Update only the necessary files to complete this task.  
+```
+
+
+
 ## General Tips
 
 ### Reuse Past Work
@@ -137,7 +168,7 @@ After the second epoch:
 
 Nearly all requirements are met, but there are still some issues to address.
 
-1. The network is still noy working properly (see the screenshot, and hand drawn sketch how it should look like.
+1. The network is still noy working properly (see the screenshot, and hand drawn sketch how it should look like. (I dragged both files into cursor's agent window)
 2. Remove Reset slider button (not needed).
 3. Add a button on the left side to create new data points.
 
@@ -145,89 +176,14 @@ Nearly all requirements are met, but there are still some issues to address.
 
 <small>Actually I did not use the assistant but wrote it directly to the requirements file.</small>
 
-
-
-# Technical Realization in Cursor
-
 ---
 
-## Ask vs. Do in Cursor
-
-| 💬 **Assistant (Ask panel)** | ⚙️ **Agent (Do / inline edit)** |
-|------------------------------|--------------------------------|
-| Pre-prompted for discussion, planning, explanations | Pre-prompted for direct code editing |
-| Keeps chat history | No ongoing “chat” history — fresh each run |
-| Uses pinned files + project state for context | Uses pinned files + project state for context |
-
-**Key points:**
-- **No need to say “be an assistant” or “be an agent”** — Cursor already knows the mode.  
-- 💬 and ⚙️ **don’t share conversation memory** — they connect via pinned files and the current codebase.  
-- Switching back to 💬 restores full discussion history.
+## The Result
+After the third epoch:
+![Linear Regression Demo](../lr/screenshot_after_round_3.png)
 
 ---
-
-## Where to Host the Context
-
-**Inside coding environment**  
-- Version-controlled & persistent  
-- Both 💬 and ⚙️ see the same files  
-- Requires discipline to keep clean
-
-**Outside coding environment**  
-- Freedom to explore ideas  
-- Must copy/paste into code environment
-
-**Hybrid (recommended)**  
-- Scope outside → move cleaned `requirements.md` inside & pin it  
-- Keeps creative chaos separate, but ensures agent sees final scope
-
----
-
-## Pinned Context Strategy
-
-Example file structure:
-
-project root folder:  
-requirements.md       → pinned, defines scope  
-style_guide.md        → pinned, ensures naming/style  
-basic_rules.md        → pinned, lists unchangeable files & workflow rules  
-static/index.html     → never edited unless explicit  
-src/                  → editable code
-
-**basic_rules.md** example:
-# Basic Project Rules
-- Maintain a single static HTML in /static/index.html. Never create additional HTML files.
-- Do not change files in /static unless explicitly told.
-- Follow formatting from style_guide.md for all code.
-- Implement features according to requirements.md only.
-
-**Tip:** Keep all rounds as sections inside `requirements.md` so only one file needs to be pinned.
-
----
-
-## Multiple Assistants & Agents
-
-- **Assistants**: Multiple chat threads in Ask panel — each with its own conversation history, all seeing pinned/project files.
-- **Agents**: Each inline edit or “edit in chat” run is a new agent instance — also sees pinned/project files.
-- **Pinned files** = the bridge between all assistants and agents.
-
----
-
-![Diagram: Multiple assistants and agents linked via pinned files](diagram-placeholder)
-
----
-
-## Reload Warning
-
-- Reloading Cursor **clears conversation history** for both 💬 and ⚙️.
-- **Pinned files remain** — they are your persistent memory.
-- To keep important discussion context:
-  - Write it into pinned files, or  
-  - Save notes externally.
-
----
-
-## Reflection – Two Ends of the Spectrum
+## Usage for that workflow outside Software Development
 
 **Planning-heavy work** → *Best for Assistant → Agent*  
 - *Example: Academic writing*  
@@ -239,22 +195,6 @@ src/                  → editable code
   - Plan evolves continuously through interactive plotting and testing.  
   - Requirements emerge dynamically.
 
-**Middle ground:**  
-- Explore first (Agent-only) → then switch to planning (Assistant → Agent) for final structured output.
+## Further Reading
 
----
-
-## Closing Reflection
-
-Right now, I am in the **Assistant phase** of my own workflow — discussing and refining ideas with a conversational partner.  
-Later, the assistant (💬) will hand over to the agent (⚙️) — in this case, ChatGPT itself — to apply these agreed changes to the slides.  
-This mirrors exactly how I envision the workflow being used in practice.
-
----
-
-## Summary
-
-- **Scope first, code second**  
-- 💬 for thinking, ⚙️ for doing  
-- Keep context persistent with pinned files  
-- Use `basic_rules.md` to lock down project invariants
+[Cursor_Tips.md](Cursor_Tips.md)

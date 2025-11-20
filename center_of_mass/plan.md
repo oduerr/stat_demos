@@ -1,0 +1,6 @@
+This was the starting point using Gemini and anti-gravity
+
+
+Create a single-file HTML/JavaScript web application to demonstrate that the Expected Value ($E[X]$) acts as the center of mass for discrete distributions. The interface should allow users to select standard distributions (Binomial, Poisson, Geometric, Negative Binomial) and adjust their parameters (like $n, p, \lambda$) using sliders. Crucially, implement a visual 'fulcrum' (a triangle) under the x-axis that dynamically slides to the exact position of the mean to show where the distribution balances. Add an interactive feature where users can click and drag the individual bars to create a custom distribution, which should immediately recalculate the mean and move the fulcrum in real-time. Please also display the calculated Mean and Standard Deviation numerically, and visually indicate the spread ($\sigma$) around the fulcrum. Ensure the design is clean, responsive, and suitable for a classroom demonstration.
+
+![alt text](image.png)
