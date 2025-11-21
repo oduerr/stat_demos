@@ -65,6 +65,16 @@
             }
         }
 
+        .math-panel {
+            grid-column: 1 / -1;
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+            margin-bottom: 0;
+        }
+
         .controls-panel {
             background-color: var(--card-bg);
             padding: 1.5rem;
@@ -72,6 +82,19 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid var(--border-color);
             height: fit-content;
+        }
+
+        .explanations-panel {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 700px) {
+            .explanations-panel {
+                grid-template-columns: 1fr;
+            }
         }
 
         .plot-panel {
@@ -147,24 +170,19 @@
             border-radius: 2px;
         }
 
-        .math-section {
-            margin-top: 2rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--border-color);
-        }
-
         .math-section p {
             font-size: 0.9rem;
             line-height: 1.6;
             color: #cbd5e1;
+            margin: 0;
         }
 
         .explanation-box {
             background-color: #334155;
             padding: 1rem;
             border-radius: 0.5rem;
-            margin-top: 1rem;
             font-size: 0.85rem;
+            height: fit-content;
         }
 
         #sliders-wrapper {
@@ -201,6 +219,18 @@
     </header>
 
     <div class="container">
+        <div class="math-panel">
+            <div class="math-section">
+                <label>Mathematical Definition</label>
+                <p>
+                    The Bernstein polynomial of degree \(M\) is defined as:
+                    $$ g(z) = \sum_{k=0}^{M} \vartheta_k B_{k}^{M}(z) $$
+                    where the basis functions are:
+                    $$ B_{k}^{M}(z) = \binom{M}{k} z^k (1 - z)^{M-k} $$
+                </p>
+            </div>
+        </div>
+
         <div class="controls-panel">
             <div class="control-group">
                 <label for="degree-input">Polynomial Degree (M)</label>
@@ -225,34 +255,23 @@
                     transition: background-color 0.2s;
                 ">Reset Coefficients</button>
             </div>
-
-            <div class="math-section">
-                <label>Mathematical Definition</label>
-                <p>
-                    The Bernstein polynomial of degree \(M\) is defined as:
-                    $$ g(z) = \sum_{k=0}^{M} \vartheta_k B_{k}^{M}(z) $$
-                    where the basis functions are:
-                    $$ B_{k}^{M}(z) = \binom{M}{k} z^k (1 - z)^{M-k} $$
-                </p>
-                <div class="explanation-box">
-                    <strong>Key Insight:</strong> Bernstein polynomials are a partition of unity, meaning \(\sum
-                    B_k^M(z) = 1\). They form the mathematical basis for Bézier curves used in computer graphics.
-                </div>
-                <div class="explanation-box" style="margin-top: 0.5rem;">
-                    <strong>Deep Learning Context:</strong> In the context of Normalizing Flows and Transformation
-                    Models,
-                    Bernstein polynomials are used to construct flexible, monotonic transformation functions.
-                    Because the derivative of a Bernstein polynomial can be constrained to be positive (by ensuring
-                    \(\vartheta_{k} < \vartheta_{k+1}\)), they are ideal for modeling cumulative distribution functions
-                        (CDFs) or invertible transformations. </div>
-                </div>
-            </div>
-
-            <div class="plot-panel">
-                <div id="plot-div" style="width: 100%; height: 100%;"></div>
-            </div>
         </div>
 
+        <div class="plot-panel">
+            <div id="plot-div" style="width: 100%; height: 100%;"></div>
+        </div>
+
+        <div class="explanations-panel">
+            <div class="explanation-box">
+                <strong>Key Insight:</strong> Bernstein polynomials are a partition of unity, meaning \(\sum
+                B_k^M(z) = 1\). They form the mathematical basis for Bézier curves used in computer graphics.
+            </div>
+            <div class="explanation-box">
+                <strong>Deep Learning Context:</strong> Bernstein polynomials enable flexible, monotonic
+                transformations in Normalizing Flows. Constraining \(\vartheta_{k} < \vartheta_{k+1}\) ensures positive
+                    derivatives, making them ideal for modeling CDFs. </div>
+            </div>
+        </div>
         <script>
             // --- Logic ---
 
