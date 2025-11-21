@@ -133,10 +133,10 @@
             height: 16px;
             width: 16px;
             border-radius: 50%;
-            background: var(--accent-color);
+            background: var(--slider-color, var(--accent-color));
             cursor: pointer;
             margin-top: -6px;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
         }
 
         input[type="range"]::-webkit-slider-runnable-track {
@@ -212,6 +212,18 @@
                 <div id="sliders-wrapper">
                     <!-- Sliders will be injected here -->
                 </div>
+                <button id="reset-btn" style="
+                    margin-top: 1rem;
+                    width: 100%;
+                    padding: 0.5rem;
+                    background-color: #334155;
+                    color: white;
+                    border: 1px solid #475569;
+                    border-radius: 0.5rem;
+                    cursor: pointer;
+                    font-family: inherit;
+                    transition: background-color 0.2s;
+                ">Reset Coefficients</button>
             </div>
 
             <div class="math-section">
@@ -226,212 +238,241 @@
                     <strong>Key Insight:</strong> Bernstein polynomials are a partition of unity, meaning \(\sum
                     B_k^M(z) = 1\). They form the mathematical basis for Bézier curves used in computer graphics.
                 </div>
+                <div class="explanation-box" style="margin-top: 0.5rem;">
+                    <strong>Deep Learning Context:</strong> In the context of Normalizing Flows and Transformation
+                    Models,
+                    Bernstein polynomials are used to construct flexible, monotonic transformation functions.
+                    Because the derivative of a Bernstein polynomial can be constrained to be positive (by ensuring
+                    \(\vartheta_{k} < \vartheta_{k+1}\)), they are ideal for modeling cumulative distribution functions
+                        (CDFs) or invertible transformations. </div>
+                </div>
+            </div>
+
+            <div class="plot-panel">
+                <div id="plot-div" style="width: 100%; height: 100%;"></div>
             </div>
         </div>
 
-        <div class="plot-panel">
-            <div id="plot-div" style="width: 100%; height: 100%;"></div>
-        </div>
-    </div>
+        <script>
+            // --- Logic ---
 
-    <script>
-        // --- Logic ---
+            // State
+            let M = 4;
+            let coefficients = [1.0, 1.0, 1.0, 1.0, 1.0]; // Default values set to 1.0
 
-        // State
-        let M = 4;
-        let coefficients = [2.0, 2.0, 2.0, 2.0, 2.0]; // Default values matching notebook
+            // DOM Elements
+            const degreeInput = document.getElementById('degree-input');
+            const slidersWrapper = document.getElementById('sliders-wrapper');
+            const plotDiv = document.getElementById('plot-div');
 
-        // DOM Elements
-        const degreeInput = document.getElementById('degree-input');
-        const slidersWrapper = document.getElementById('sliders-wrapper');
-        const plotDiv = document.getElementById('plot-div');
-
-        // Helper: Factorial
-        function factorial(n) {
-            if (n === 0 || n === 1) return 1;
-            let result = 1;
-            for (let i = 2; i <= n; i++) result *= i;
-            return result;
-        }
-
-        // Helper: Binomial Coefficient
-        function nCr(n, r) {
-            if (r < 0 || r > n) return 0;
-            return factorial(n) / (factorial(r) * factorial(n - r));
-        }
-
-        // Bernstein Basis Function
-        function bernsteinBasis(n, k, z) {
-            return nCr(n, k) * Math.pow(z, k) * Math.pow(1 - z, n - k);
-        }
-
-        // Generate Data for Plotting
-        function generateData() {
-            const zValues = [];
-            const steps = 100;
-            for (let i = 0; i <= steps; i++) {
-                zValues.push(i / steps);
+            // Helper: Factorial
+            function factorial(n) {
+                if (n === 0 || n === 1) return 1;
+                let result = 1;
+                for (let i = 2; i <= n; i++) result *= i;
+                return result;
             }
 
-            const traces = [];
+            // Helper: Binomial Coefficient
+            function nCr(n, r) {
+                if (r < 0 || r > n) return 0;
+                return factorial(n) / (factorial(r) * factorial(n - r));
+            }
 
-            // 1. Combined Polynomial Trace
-            const combinedY = zValues.map(z => {
-                let sum = 0;
-                for (let k = 0; k <= M; k++) {
-                    sum += coefficients[k] * bernsteinBasis(M, k, z);
+            // Bernstein Basis Function
+            function bernsteinBasis(n, k, z) {
+                return nCr(n, k) * Math.pow(z, k) * Math.pow(1 - z, n - k);
+            }
+
+            // Helper: Generate Color for Basis Function
+            function getBasisColor(k, M) {
+                // Use HSL to distribute colors evenly
+                // Hue range 0-360. We want to avoid too similar colors if possible.
+                // Simple strategy: divide 360 by M+1
+                const hue = Math.floor((k / (M + 1)) * 360);
+                return `hsl(${hue}, 70%, 60%)`;
+            }
+
+            // Generate Data for Plotting
+            function generateData() {
+                const zValues = [];
+                const steps = 100;
+                for (let i = 0; i <= steps; i++) {
+                    zValues.push(i / steps);
                 }
-                return sum;
-            });
 
-            traces.push({
-                x: zValues,
-                y: combinedY,
-                mode: 'lines',
-                name: 'Combined Polynomial',
-                line: { color: '#38bdf8', width: 4 }
-            });
+                const traces = [];
 
-            // 2. Individual Basis Functions Traces (Scaled by coefficient)
-            for (let k = 0; k <= M; k++) {
-                const basisY = zValues.map(z => coefficients[k] * bernsteinBasis(M, k, z));
-
-                // Variable line width based on coefficient
-                // Base width 1, add coefficient value (scaled)
-                const lineWidth = Math.max(1, 1 + coefficients[k]);
+                // 1. Combined Polynomial Trace
+                const combinedY = zValues.map(z => {
+                    let sum = 0;
+                    for (let k = 0; k <= M; k++) {
+                        sum += coefficients[k] * bernsteinBasis(M, k, z);
+                    }
+                    return sum;
+                });
 
                 traces.push({
                     x: zValues,
-                    y: basisY,
+                    y: combinedY,
                     mode: 'lines',
-                    name: `v<sub>${k}</sub> B<sub>${k}</sub><sup>${M}</sup>(z)`, // HTML subscript/superscript for Plotly
-                    line: {
-                        width: lineWidth,
-                        dash: 'solid', // Changed to solid to make thickness more visible
-                        color: `rgba(148, 163, 184, ${Math.min(0.8, 0.3 + coefficients[k] / 10)})` // Also adjust opacity slightly
-                    },
-                    hoverinfo: 'none'
+                    name: 'Combined Polynomial',
+                    line: { color: '#38bdf8', width: 4 }
                 });
+
+                // 2. Individual Basis Functions Traces (Scaled by coefficient)
+                for (let k = 0; k <= M; k++) {
+                    const basisY = zValues.map(z => coefficients[k] * bernsteinBasis(M, k, z));
+
+                    // Variable line width based on coefficient
+                    // Base width 1, add coefficient value (scaled)
+                    const lineWidth = Math.max(1, 1 + coefficients[k]);
+                    const color = getBasisColor(k, M);
+
+                    traces.push({
+                        x: zValues,
+                        y: basisY,
+                        mode: 'lines',
+                        name: `v<sub>${k}</sub> B<sub>${k}</sub><sup>${M}</sup>(z)`, // HTML subscript/superscript for Plotly
+                        line: {
+                            width: lineWidth,
+                            dash: 'solid', // Changed to solid to make thickness more visible
+                            color: color
+                        },
+                        hovertemplate: `<b>B<sub>${k}</sub><sup>${M}</sup>(z)</b><br>v<sub>${k}</sub>: %{text:.2f}<br>Value: %{y:.2f}<extra></extra>`,
+                        text: zValues.map(() => coefficients[k]) // Pass coefficient for tooltip
+                    });
+                }
+
+                return traces;
             }
 
-            return traces;
-        }
+            // Render Plot
+            function renderPlot() {
+                const data = generateData();
 
-        // Render Plot
-        function renderPlot() {
-            const data = generateData();
+                const layout = {
+                    title: {
+                        text: `Bernstein Polynomial Combination (M=${M})`,
+                        font: { color: '#e2e8f0' }
+                    },
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    xaxis: {
+                        title: 'z',
+                        color: '#94a3b8',
+                        gridcolor: '#334155',
+                        range: [0, 1]
+                    },
+                    yaxis: {
+                        title: 'g(z)',
+                        color: '#94a3b8',
+                        gridcolor: '#334155',
+                        range: [0, Math.max(5, ...coefficients) + 1] // Fix y-axis range for stability
+                    },
+                    legend: {
+                        font: { color: '#e2e8f0' }
+                    },
+                    margin: { t: 50, r: 20, b: 50, l: 50 },
+                    uirevision: 'true' // Preserve state on updates
+                };
 
-            const layout = {
-                title: {
-                    text: `Bernstein Polynomial Combination (M=${M})`,
-                    font: { color: '#e2e8f0' }
-                },
-                paper_bgcolor: 'rgba(0,0,0,0)',
-                plot_bgcolor: 'rgba(0,0,0,0)',
-                xaxis: {
-                    title: 'z',
-                    color: '#94a3b8',
-                    gridcolor: '#334155',
-                    range: [0, 1]
-                },
-                yaxis: {
-                    title: 'g(z)',
-                    color: '#94a3b8',
-                    gridcolor: '#334155',
-                    range: [0, Math.max(5, ...coefficients) + 1] // Fix y-axis range for stability
-                },
-                legend: {
-                    font: { color: '#e2e8f0' }
-                },
-                margin: { t: 50, r: 20, b: 50, l: 50 },
-                uirevision: 'true' // Preserve state on updates
-            };
+                const config = { responsive: true };
 
-            const config = { responsive: true };
+                // Use Plotly.react for efficient updates
+                Plotly.react(plotDiv, data, layout, config);
+            }
 
-            // Use Plotly.react for efficient updates
-            Plotly.react(plotDiv, data, layout, config);
-        }
+            // Create Sliders
+            function createSliders() {
+                slidersWrapper.innerHTML = ''; // Clear existing
 
-        // Create Sliders
-        function createSliders() {
-            slidersWrapper.innerHTML = ''; // Clear existing
+                // Ensure coefficients array matches degree
+                const newCoeffs = [];
+                for (let k = 0; k <= M; k++) {
+                    if (k < coefficients.length) {
+                        newCoeffs.push(coefficients[k]);
+                    } else {
+                        newCoeffs.push(1.0); // Default for new terms
+                    }
+                }
+                coefficients = newCoeffs;
 
-            // Ensure coefficients array matches degree
-            const newCoeffs = [];
-            for (let k = 0; k <= M; k++) {
-                if (k < coefficients.length) {
-                    newCoeffs.push(coefficients[k]);
-                } else {
-                    newCoeffs.push(2.0); // Default for new terms
+                for (let k = 0; k <= M; k++) {
+                    const container = document.createElement('div');
+                    container.className = 'slider-container';
+
+                    const labelDiv = document.createElement('div');
+                    labelDiv.className = 'slider-label';
+
+                    const nameSpan = document.createElement('span');
+                    // Use simple HTML for slider labels too, to match plot legend and avoid MathJax sync issues
+                    nameSpan.innerHTML = `v<sub>${k}</sub>`;
+
+                    const valSpan = document.createElement('span');
+                    valSpan.id = `val-${k}`;
+                    valSpan.innerText = coefficients[k].toFixed(2);
+
+                    labelDiv.appendChild(nameSpan);
+                    labelDiv.appendChild(valSpan);
+
+                    const slider = document.createElement('input');
+                    slider.type = 'range';
+                    slider.min = '0';
+                    slider.max = '5';
+                    slider.step = '0.1';
+                    slider.value = coefficients[k];
+
+                    // Set custom color for this slider
+                    const color = getBasisColor(k, M);
+                    slider.style.setProperty('--slider-color', color);
+
+                    slider.addEventListener('input', (e) => {
+                        const val = parseFloat(e.target.value);
+                        coefficients[k] = val;
+                        document.getElementById(`val-${k}`).innerText = val.toFixed(2);
+                        renderPlot();
+                    });
+
+                    container.appendChild(labelDiv);
+                    container.appendChild(slider);
+                    slidersWrapper.appendChild(container);
                 }
             }
-            coefficients = newCoeffs;
 
-            for (let k = 0; k <= M; k++) {
-                const container = document.createElement('div');
-                container.className = 'slider-container';
+            // Event Listeners
+            degreeInput.addEventListener('change', (e) => {
+                let val = parseInt(e.target.value);
+                if (isNaN(val) || val < 1) val = 1;
+                if (val > 20) val = 20;
+                M = val;
+                createSliders();
+                renderPlot();
 
-                const labelDiv = document.createElement('div');
-                labelDiv.className = 'slider-label';
+                // Update formula M in text if MathJax is available
+                if (window.MathJax) {
+                    // We need to re-render the static math section if we want M to update there, 
+                    // but it's static text currently. We could make it dynamic but it's minor.
+                }
+            });
 
-                const nameSpan = document.createElement('span');
-                // Use simple HTML for slider labels too, to match plot legend and avoid MathJax sync issues
-                nameSpan.innerHTML = `v<sub>${k}</sub>`;
-
-                const valSpan = document.createElement('span');
-                valSpan.id = `val-${k}`;
-                valSpan.innerText = coefficients[k].toFixed(2);
-
-                labelDiv.appendChild(nameSpan);
-                labelDiv.appendChild(valSpan);
-
-                const slider = document.createElement('input');
-                slider.type = 'range';
-                slider.min = '0';
-                slider.max = '5';
-                slider.step = '0.1';
-                slider.value = coefficients[k];
-
-                slider.addEventListener('input', (e) => {
-                    const val = parseFloat(e.target.value);
-                    coefficients[k] = val;
-                    document.getElementById(`val-${k}`).innerText = val.toFixed(2);
-                    renderPlot();
-                });
-
-                container.appendChild(labelDiv);
-                container.appendChild(slider);
-                slidersWrapper.appendChild(container);
-            }
-        }
-
-        // Event Listeners
-        degreeInput.addEventListener('change', (e) => {
-            let val = parseInt(e.target.value);
-            if (isNaN(val) || val < 1) val = 1;
-            if (val > 20) val = 20;
-            M = val;
+            // Initial Render
             createSliders();
             renderPlot();
 
-            // Update formula M in text if MathJax is available
-            if (window.MathJax) {
-                // We need to re-render the static math section if we want M to update there, 
-                // but it's static text currently. We could make it dynamic but it's minor.
-            }
-        });
+            // Handle Resize
+            window.addEventListener('resize', () => {
+                Plotly.Plots.resize(plotDiv);
+            });
 
-        // Initial Render
-        createSliders();
-        renderPlot();
-
-        // Handle Resize
-        window.addEventListener('resize', () => {
-            Plotly.Plots.resize(plotDiv);
-        });
-
-    </script>
+            // Reset Button
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                // Reset all coefficients to 1.0
+                coefficients = new Array(M + 1).fill(1.0);
+                createSliders();
+                renderPlot();
+            });
+        </script>
 </body>
 
 </html>
