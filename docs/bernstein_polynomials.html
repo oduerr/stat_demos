@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Bernstein Polynomials</title>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- MathJax -->
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            width: 100%;
+            padding: 2rem 0;
+            text-align: center;
+            background: linear-gradient(to bottom, #1e293b00, var(--bg-color));
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .controls-panel {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+            height: fit-content;
+        }
+
+        .plot-panel {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+            min-height: 500px;
+        }
+
+        .control-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 0.5rem;
+            background-color: #334155;
+            border: 1px solid #475569;
+            border-radius: 0.5rem;
+            color: white;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .slider-container {
+            margin-bottom: 1rem;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #475569;
+            border-radius: 2px;
+        }
+
+        .math-section {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .math-section p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #cbd5e1;
+        }
+
+        .explanation-box {
+            background-color: #334155;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+        }
+
+        #sliders-wrapper {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        /* Scrollbar styling */
+        #sliders-wrapper::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #sliders-wrapper::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        #sliders-wrapper::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        #sliders-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Bernstein Polynomials Explorer</h1>
+        <p style="color: #94a3b8; margin-top: 0.5rem;">Interactive visualization of Bernstein basis functions</p>
+    </header>
+
+    <div class="container">
+        <div class="controls-panel">
+            <div class="control-group">
+                <label for="degree-input">Polynomial Degree (M)</label>
+                <input type="number" id="degree-input" value="4" min="1" max="20">
+            </div>
+
+            <div class="control-group">
+                <label>Coefficients (\(\vartheta_k\))</label>
+                <div id="sliders-wrapper">
+                    <!-- Sliders will be injected here -->
+                </div>
+            </div>
+
+            <div class="math-section">
+                <label>Mathematical Definition</label>
+                <p>
+                    The Bernstein polynomial of degree \(M\) is defined as:
+                    $$ g(z) = \sum_{k=0}^{M} \vartheta_k B_{k}^{M}(z) $$
+                    where the basis functions are:
+                    $$ B_{k}^{M}(z) = \binom{M}{k} z^k (1 - z)^{M-k} $$
+                </p>
+                <div class="explanation-box">
+                    <strong>Key Insight:</strong> Bernstein polynomials are a partition of unity, meaning \(\sum
+                    B_k^M(z) = 1\). They form the mathematical basis for Bézier curves used in computer graphics.
+                </div>
+            </div>
+        </div>
+
+        <div class="plot-panel">
+            <div id="plot-div" style="width: 100%; height: 100%;"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- Logic ---
+
+        // State
+        let M = 4;
+        let coefficients = [2.0, 2.0, 2.0, 2.0, 2.0]; // Default values matching notebook
+
+        // DOM Elements
+        const degreeInput = document.getElementById('degree-input');
+        const slidersWrapper = document.getElementById('sliders-wrapper');
+        const plotDiv = document.getElementById('plot-div');
+
+        // Helper: Factorial
+        function factorial(n) {
+            if (n === 0 || n === 1) return 1;
+            let result = 1;
+            for (let i = 2; i <= n; i++) result *= i;
+            return result;
+        }
+
+        // Helper: Binomial Coefficient
+        function nCr(n, r) {
+            if (r < 0 || r > n) return 0;
+            return factorial(n) / (factorial(r) * factorial(n - r));
+        }
+
+        // Bernstein Basis Function
+        function bernsteinBasis(n, k, z) {
+            return nCr(n, k) * Math.pow(z, k) * Math.pow(1 - z, n - k);
+        }
+
+        // Generate Data for Plotting
+        function generateData() {
+            const zValues = [];
+            const steps = 100;
+            for (let i = 0; i <= steps; i++) {
+                zValues.push(i / steps);
+            }
+
+            const traces = [];
+
+            // 1. Combined Polynomial Trace
+            const combinedY = zValues.map(z => {
+                let sum = 0;
+                for (let k = 0; k <= M; k++) {
+                    sum += coefficients[k] * bernsteinBasis(M, k, z);
+                }
+                return sum;
+            });
+
+            traces.push({
+                x: zValues,
+                y: combinedY,
+                mode: 'lines',
+                name: 'Combined Polynomial',
+                line: { color: '#38bdf8', width: 4 }
+            });
+
+            // 2. Individual Basis Functions Traces (Scaled by coefficient)
+            for (let k = 0; k <= M; k++) {
+                const basisY = zValues.map(z => coefficients[k] * bernsteinBasis(M, k, z));
+
+                // Variable line width based on coefficient
+                // Base width 1, add coefficient value (scaled)
+                const lineWidth = Math.max(1, 1 + coefficients[k]);
+
+                traces.push({
+                    x: zValues,
+                    y: basisY,
+                    mode: 'lines',
+                    name: `v<sub>${k}</sub> B<sub>${k}</sub><sup>${M}</sup>(z)`, // HTML subscript/superscript for Plotly
+                    line: {
+                        width: lineWidth,
+                        dash: 'solid', // Changed to solid to make thickness more visible
+                        color: `rgba(148, 163, 184, ${Math.min(0.8, 0.3 + coefficients[k] / 10)})` // Also adjust opacity slightly
+                    },
+                    hoverinfo: 'none'
+                });
+            }
+
+            return traces;
+        }
+
+        // Render Plot
+        function renderPlot() {
+            const data = generateData();
+
+            const layout = {
+                title: {
+                    text: `Bernstein Polynomial Combination (M=${M})`,
+                    font: { color: '#e2e8f0' }
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                xaxis: {
+                    title: 'z',
+                    color: '#94a3b8',
+                    gridcolor: '#334155',
+                    range: [0, 1]
+                },
+                yaxis: {
+                    title: 'g(z)',
+                    color: '#94a3b8',
+                    gridcolor: '#334155',
+                    range: [0, Math.max(5, ...coefficients) + 1] // Fix y-axis range for stability
+                },
+                legend: {
+                    font: { color: '#e2e8f0' }
+                },
+                margin: { t: 50, r: 20, b: 50, l: 50 },
+                uirevision: 'true' // Preserve state on updates
+            };
+
+            const config = { responsive: true };
+
+            // Use Plotly.react for efficient updates
+            Plotly.react(plotDiv, data, layout, config);
+        }
+
+        // Create Sliders
+        function createSliders() {
+            slidersWrapper.innerHTML = ''; // Clear existing
+
+            // Ensure coefficients array matches degree
+            const newCoeffs = [];
+            for (let k = 0; k <= M; k++) {
+                if (k < coefficients.length) {
+                    newCoeffs.push(coefficients[k]);
+                } else {
+                    newCoeffs.push(2.0); // Default for new terms
+                }
+            }
+            coefficients = newCoeffs;
+
+            for (let k = 0; k <= M; k++) {
+                const container = document.createElement('div');
+                container.className = 'slider-container';
+
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'slider-label';
+
+                const nameSpan = document.createElement('span');
+                // Use simple HTML for slider labels too, to match plot legend and avoid MathJax sync issues
+                nameSpan.innerHTML = `v<sub>${k}</sub>`;
+
+                const valSpan = document.createElement('span');
+                valSpan.id = `val-${k}`;
+                valSpan.innerText = coefficients[k].toFixed(2);
+
+                labelDiv.appendChild(nameSpan);
+                labelDiv.appendChild(valSpan);
+
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = '0';
+                slider.max = '5';
+                slider.step = '0.1';
+                slider.value = coefficients[k];
+
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    coefficients[k] = val;
+                    document.getElementById(`val-${k}`).innerText = val.toFixed(2);
+                    renderPlot();
+                });
+
+                container.appendChild(labelDiv);
+                container.appendChild(slider);
+                slidersWrapper.appendChild(container);
+            }
+        }
+
+        // Event Listeners
+        degreeInput.addEventListener('change', (e) => {
+            let val = parseInt(e.target.value);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 20) val = 20;
+            M = val;
+            createSliders();
+            renderPlot();
+
+            // Update formula M in text if MathJax is available
+            if (window.MathJax) {
+                // We need to re-render the static math section if we want M to update there, 
+                // but it's static text currently. We could make it dynamic but it's minor.
+            }
+        });
+
+        // Initial Render
+        createSliders();
+        renderPlot();
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            Plotly.Plots.resize(plotDiv);
+        });
+
+    </script>
+</body>
+
+</html>
