@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bernstein Maximum Likelihood App</title>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- MathJax -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --border-color: #334155;
+            --success-color: #22c55e;
+            --danger-color: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            width: 100%;
+            padding: 2rem 0;
+            text-align: center;
+            background: linear-gradient(to bottom, #1e293b00, var(--bg-color));
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1400px;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1000px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panels */
+        .panel {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+        }
+
+        .controls-panel {
+            height: fit-content;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .plot-panel {
+            min-height: 600px;
+            /* display: flex; */
+            /* flex-direction: column; */
+            gap: 1rem;
+        }
+
+        /* Controls */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        button {
+            padding: 0.75rem;
+            background-color: #334155;
+            color: white;
+            border: 1px solid #475569;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: #475569;
+            border-color: var(--accent-color);
+        }
+
+        button.primary {
+            background-color: var(--accent-color);
+            color: #0f172a;
+            border: none;
+        }
+
+        button.primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .button-row button {
+            flex: 1;
+        }
+
+        /* Sliders */
+        #sliders-wrapper {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .slider-container {
+            margin-bottom: 1rem;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #475569;
+            border-radius: 2px;
+        }
+
+        /* Math & Explanations */
+        .math-panel {
+            grid-column: 1 / -1;
+            margin-bottom: 0;
+        }
+
+        .math-content {
+            font-size: 0.9rem;
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+
+        /* Loss Display */
+        .loss-display {
+            background-color: #0f172a;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            font-family: monospace;
+            color: var(--accent-color);
+            font-size: 1.1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Bernstein Maximum Likelihood App</h1>
+        <p style="color: #94a3b8; margin-top: 0.5rem;">Normalizing Flow with Bernstein Polynomials</p>
+    </header>
+
+    <div class="container">
+        <!-- Math / Intro -->
+        <div class="panel math-panel">
+            <div class="math-content">
+                <p>
+                    <strong>Goal:</strong> Transform a simple Standard Normal Distribution \( z \sim \mathcal{N}(0, 1)
+                    \) (Latent Space) into a complex distribution that fits the observed data \( x \) (Data Space).
+                    <br>
+                    <strong>Model:</strong> \( f(x) = \sum_{k=0}^{M} \vartheta_k B_{k}^{M}(x) \). We learn the
+                    coefficients \( \vartheta_k \) to maximize the likelihood.
+                    <br>
+                    <strong>Loss (NLL):</strong> \( \mathcal{L} = - \sum \left( \log p_z(f(x)) + \log |f'(x)| \right)
+                    \).
+                </p>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="panel controls-panel">
+            <div class="control-group">
+                <label>1. Generate Data</label>
+                <div class="button-row">
+                    <button onclick="generateData('gaussian')">Gaussian</button>
+                    <button onclick="generateData('uniform')">Uniform</button>
+                    <button onclick="generateData('bimodal')">Bimodal</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>2. Hyperparameters</label>
+
+                <!-- Learning Rate -->
+                <div style="margin-bottom: 0.5rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                        <span style="font-size: 0.85rem; color: #cbd5e1;">Learning Rate</span>
+                        <input type="number" id="lr-input" value="0.005" step="0.001" min="0.0001" max="1.0"
+                            style="width: 70px; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px; padding: 2px 5px;">
+                    </div>
+                    <input type="range" id="lr-slider" min="-4" max="0" step="0.1" value="-2.3">
+                </div>
+
+                <!-- Degree M -->
+                <div>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                        <span style="font-size: 0.85rem; color: #cbd5e1;">Degree (M)</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="degree-input" value="10" min="2" max="50"
+                                style="width: 50px; background: #334155; border: 1px solid #475569; color: white; border-radius: 4px; padding: 2px 5px;">
+                            <button onclick="updateDegree()" style="padding: 2px 8px; font-size: 0.8rem;">Set</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>3. Optimization</label>
+                <button id="optimize-btn" class="primary" onclick="toggleOptimization()">Start Learning (SGD)</button>
+                <div class="loss-display" id="loss-value">Loss: --</div>
+            </div>
+
+            <div class="control-group">
+                <label>4. Manual Control (Coefficients)</label>
+                <div id="sliders-wrapper">
+                    <!-- Sliders injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Plots -->
+        <div class="panel plot-panel">
+            <div id="main-plot" style="width: 100%; height: 500px; border: 2px solid red;"></div>
+            <div id="loss-plot" style="width: 100%; height: 200px;"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        const state = {
+            M: 10, // Degree
+            coeffs: [],
+            data: [],
+            isOptimizing: false,
+            learningRate: 0.005,
+            lossHistory: [],
+            iteration: 0,
+            animationId: null
+        };
+
+        // Initialize coefficients immediately to avoid crash
+        state.coeffs = Array(state.M + 1).fill(0).map((_, i) => -3 + (i * 6) / state.M);
+
+        // Initialize coefficients (Monotonic increasing start)
+        function resetCoeffs() {
+            // Start with a rough identity mapping: -3 to 3
+            state.coeffs = Array(state.M + 1).fill(0).map((_, i) => -3 + (i * 6) / state.M);
+            updateSliders();
+        }
+
+        // --- DOM Elements ---
+        const slidersWrapper = document.getElementById('sliders-wrapper');
+        const lossValueDiv = document.getElementById('loss-value');
+        const optimizeBtn = document.getElementById('optimize-btn');
+        const mainPlotDiv = document.getElementById('main-plot');
+        const lossPlotDiv = document.getElementById('loss-plot');
+
+        // --- Math Helpers ---
+
+        // Factorial cache
+        const factCache = [1, 1];
+        function factorial(n) {
+            if (factCache[n] !== undefined) return factCache[n];
+            let res = factCache[factCache.length - 1];
+            for (let i = factCache.length; i <= n; i++) res *= i;
+            factCache[n] = res;
+            return res;
+        }
+
+        function nCr(n, r) {
+            if (r < 0 || r > n) return 0;
+            return factorial(n) / (factorial(r) * factorial(n - r));
+        }
+
+        // Bernstein Basis B_k^M(x)
+        function bernsteinBasis(M, k, x) {
+            if (x < 0 || x > 1) return 0; // Support [0, 1]
+            return nCr(M, k) * Math.pow(x, k) * Math.pow(1 - x, M - k);
+        }
+
+        // Transformation Function f(x)
+        function f(x, coeffs) {
+            let sum = 0;
+            for (let k = 0; k <= state.M; k++) {
+                sum += coeffs[k] * bernsteinBasis(state.M, k, x);
+            }
+            return sum;
+        }
+
+        // Derivative f'(x)
+        // f'(x) = M * sum_{k=0}^{M-1} (theta_{k+1} - theta_k) * B_k^{M-1}(x)
+        function fPrime(x, coeffs) {
+            let sum = 0;
+            for (let k = 0; k < state.M; k++) {
+                sum += (coeffs[k + 1] - coeffs[k]) * bernsteinBasis(state.M - 1, k, x);
+            }
+            return state.M * sum;
+        }
+
+        // Loss Function (Negative Log Likelihood)
+        // L = - sum ( log p_z(f(x)) + log |f'(x)| )
+        // p_z(z) = (1/sqrt(2pi)) * exp(-0.5 * z^2)
+        // log p_z(z) = -0.5 * z^2 - log(sqrt(2pi))
+        // We can ignore the constant term for optimization
+        // L_i = 0.5 * f(x)^2 - log |f'(x)|
+        function calculateLoss(coeffs, data) {
+            let totalLoss = 0;
+            const N = data.length;
+
+            for (let i = 0; i < N; i++) {
+                const x = data[i];
+                const z = f(x, coeffs);
+                const deriv = fPrime(x, coeffs);
+
+                // Avoid log(0) or log(negative) if monotonicity breaks slightly
+                const absDeriv = Math.max(1e-6, Math.abs(deriv));
+
+                totalLoss += 0.5 * z * z - Math.log(absDeriv);
+            }
+            return totalLoss / N;
+        }
+
+        // --- Data Generation ---
+        function generateData(type) {
+            state.data = [];
+            const N = 300;
+
+            if (type === 'gaussian') {
+                // Gaussian centered at 0.5, sigma 0.15, clipped to [0,1]
+                for (let i = 0; i < N; i++) {
+                    let u = 0, v = 0;
+                    while (u === 0) u = Math.random();
+                    while (v === 0) v = Math.random();
+                    let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+                    let val = 0.5 + num * 0.15;
+                    if (val >= 0 && val <= 1) state.data.push(val);
+                }
+            } else if (type === 'uniform') {
+                // Uniform [0.2, 0.8]
+                for (let i = 0; i < N; i++) {
+                    state.data.push(0.2 + Math.random() * 0.6);
+                }
+            } else if (type === 'bimodal') {
+                // Mixture of two Gaussians: 0.3 and 0.7
+                for (let i = 0; i < N; i++) {
+                    let u = 0, v = 0;
+                    while (u === 0) u = Math.random();
+                    while (v === 0) v = Math.random();
+                    let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+
+                    let center = Math.random() < 0.5 ? 0.3 : 0.7;
+                    let val = center + num * 0.08;
+                    if (val >= 0 && val <= 1) state.data.push(val);
+                }
+            }
+
+            // Reset Loss History
+            state.lossHistory = [];
+            const initialLoss = calculateLoss(state.coeffs, state.data);
+            state.lossHistory.push(initialLoss);
+            lossValueDiv.innerText = `Loss: ${initialLoss.toFixed(4)}`;
+
+            // Initial Plot
+            updatePlots();
+        }
+
+        // --- UI & Sliders ---
+        function createSliders() {
+            console.log('Creating sliders...');
+            try {
+                if (!slidersWrapper) {
+                    console.error('slidersWrapper not found!');
+                    return;
+                }
+                slidersWrapper.innerHTML = '';
+                for (let k = 0; k <= state.M; k++) {
+                    const container = document.createElement('div');
+                    container.className = 'slider-container';
+
+                    const label = document.createElement('div');
+                    label.className = 'slider-label';
+                    label.innerHTML = `<span>&theta;<sub>${k}</sub></span><span id="val-${k}">${state.coeffs[k].toFixed(2)}</span>`;
+
+                    const slider = document.createElement('input');
+                    slider.type = 'range';
+                    slider.min = '-5';
+                    slider.max = '5';
+                    slider.step = '0.01';
+                    slider.value = state.coeffs[k];
+                    slider.id = `slider-${k}`;
+
+                    slider.addEventListener('input', (e) => {
+                        state.coeffs[k] = parseFloat(e.target.value);
+                        document.getElementById(`val-${k}`).innerText = state.coeffs[k].toFixed(2);
+                        if (!state.isOptimizing) updatePlots();
+                    });
+
+                    container.appendChild(label);
+                    container.appendChild(slider);
+                    slidersWrapper.appendChild(container);
+                }
+                console.log('Sliders created successfully.');
+            } catch (e) {
+                console.error('Error creating sliders:', e);
+            }
+        }
+
+        function updateSliders() {
+            for (let k = 0; k <= state.M; k++) {
+                const slider = document.getElementById(`slider-${k}`);
+                const valLabel = document.getElementById(`val-${k}`);
+                if (slider && valLabel) {
+                    slider.value = state.coeffs[k];
+                    valLabel.innerText = state.coeffs[k].toFixed(2);
+                }
+            }
+        }
+
+        // --- Visualization ---
+        function updatePlots() {
+            // console.log('Updating plots...');
+            if (typeof Plotly === 'undefined') {
+                console.error('Plotly is not loaded');
+                return;
+            }
+
+            try {
+                // 1. Transformation Curve (Main Plot)
+                const xGrid = [];
+                const yGrid = [];
+                const steps = 100;
+                for (let i = 0; i <= steps; i++) {
+                    const x = i / steps;
+                    xGrid.push(x);
+                    yGrid.push(f(x, state.coeffs));
+                }
+
+                // Data Points (Scatter)
+                const xData = state.data;
+                const yData = xData.map(x => f(x, state.coeffs));
+
+                // 2. Latent Space PDF (Left Plot - Vertical)
+                const yNorm = [];
+                const xNorm = [];
+                for (let y = -3.5; y <= 3.5; y += 0.1) {
+                    yNorm.push(y);
+                    xNorm.push(Math.exp(-0.5 * y * y) / Math.sqrt(2 * Math.PI));
+                }
+
+                // 3. Data Space Histogram (Bottom Plot)
+                const traces = [
+                    // Main Curve
+                    {
+                        x: xGrid,
+                        y: yGrid,
+                        xaxis: 'x',
+                        yaxis: 'y',
+                        mode: 'lines',
+                        name: 'Transformation f(x)',
+                        line: { color: '#38bdf8', width: 3 }
+                    },
+                    // Projected Points (Scatter)
+                    {
+                        x: xData,
+                        y: yData,
+                        xaxis: 'x',
+                        yaxis: 'y',
+                        mode: 'markers',
+                        name: 'Projected Data',
+                        marker: { color: '#22c55e', size: 6, opacity: 0.6 }
+                    },
+                    // Data Points (Rug Plot / Tick Marks)
+                    {
+                        x: xData,
+                        y: Array(xData.length).fill(-0.2), // Position slightly below 0
+                        xaxis: 'x',
+                        yaxis: 'y',
+                        mode: 'markers',
+                        name: 'Data Points',
+                        marker: {
+                            symbol: 'line-ns-open',
+                            color: '#f59e0b',
+                            size: 10,
+                            line: { width: 2 }
+                        },
+                        hoverinfo: 'x'
+                    },
+                    // Latent PDF (Left) - Rotated
+                    {
+                        x: xNorm,
+                        y: yNorm,
+                        xaxis: 'x2',
+                        yaxis: 'y', // Share Y axis with main plot
+                        mode: 'lines',
+                        name: 'Latent PDF',
+                        fill: 'tozerox',
+                        line: { color: '#a855f7', width: 2 },
+                        fillcolor: 'rgba(168, 85, 247, 0.2)'
+                    },
+                    // Data Histogram (Bottom)
+                    {
+                        x: xData,
+                        xaxis: 'x', // Share X axis with main plot
+                        yaxis: 'y3',
+                        type: 'histogram',
+                        name: 'Data Dist',
+                        marker: { color: '#f59e0b', opacity: 0.3 }
+                    }
+                ];
+
+                const layout = {
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    // Main Plot (Top Right)
+                    xaxis: {
+                        domain: [0.2, 1],
+                        range: [0, 1.1],
+                        title: 'Data Space (x)',
+                        color: '#94a3b8',
+                        gridcolor: '#334155'
+                    },
+                    yaxis: {
+                        domain: [0.2, 1],
+                        range: [-3.5, 3.5],
+                        title: 'Latent Space (z)',
+                        color: '#94a3b8',
+                        gridcolor: '#334155'
+                    },
+                    // Latent PDF (Top Left)
+                    xaxis2: {
+                        domain: [0, 0.15],
+                        range: [0.5, 0], // Reversed to point left
+                        showticklabels: false,
+                        color: '#94a3b8',
+                        anchor: 'y'
+                    },
+                    // Data Histogram (Bottom Right)
+                    yaxis3: {
+                        domain: [0, 0.15],
+                        showticklabels: false,
+                        range: [0, 50], // Fixed range for stability
+                        color: '#94a3b8',
+                        anchor: 'x'
+                    },
+                    margin: { t: 20, r: 20, b: 50, l: 50 },
+                    showlegend: false,
+                    shapes: [
+                        // Zero line for Z
+                        { type: 'line', xref: 'x', yref: 'y', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: '#475569', width: 1, dash: 'dash' } }
+                    ]
+                };
+
+                try {
+                    Plotly.react(mainPlotDiv, traces, layout, { responsive: true });
+                } catch (e) {
+                    console.error('Error in Plotly.react (Main):', e);
+                }
+
+                // 2. Loss Plot
+                const traceLoss = {
+                    y: [...state.lossHistory], // Force copy to ensure reactivity
+                    mode: 'lines+markers',
+                    line: { color: '#ef4444', width: 2 }
+                };
+
+                const layoutLoss = {
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    margin: { t: 10, r: 10, b: 30, l: 40 },
+                    xaxis: { showticklabels: false, color: '#94a3b8' },
+                    yaxis: {
+                        title: 'NLL',
+                        color: '#94a3b8',
+                        gridcolor: '#334155',
+                        autorange: true
+                    }
+                };
+
+                try {
+                    Plotly.react(lossPlotDiv, [traceLoss], layoutLoss, { responsive: true });
+                } catch (e) {
+                    console.error('Error in Plotly.react (Loss):', e);
+                }
+            } catch (e) {
+                console.error('Error in updatePlots:', e);
+            }
+        }
+
+        // --- Optimization ---
+        function toggleOptimization() {
+            state.isOptimizing = !state.isOptimizing;
+            optimizeBtn.innerText = state.isOptimizing ? "Stop Learning" : "Start Learning (SGD)";
+            optimizeBtn.classList.toggle('primary');
+
+            if (state.isOptimizing) {
+                optimizationLoop();
+            } else {
+                cancelAnimationFrame(state.animationId);
+            }
+        }
+
+        function optimizationLoop() {
+            if (!state.isOptimizing) return;
+
+            // 1. Calculate Gradients (Finite Differences)
+            const currentLoss = calculateLoss(state.coeffs, state.data);
+            const grads = new Array(state.M + 1).fill(0);
+            const epsilon = 1e-4;
+
+            for (let k = 0; k <= state.M; k++) {
+                const originalVal = state.coeffs[k];
+                state.coeffs[k] += epsilon;
+                const newLoss = calculateLoss(state.coeffs, state.data);
+                grads[k] = (newLoss - currentLoss) / epsilon;
+                state.coeffs[k] = originalVal; // Reset
+            }
+
+            // 2. Update Parameters (SGD)
+            for (let k = 0; k <= state.M; k++) {
+                state.coeffs[k] -= state.learningRate * grads[k];
+            }
+
+            // 3. Monotonicity Constraint (Projected Gradient)
+            // Ensure theta_k >= theta_{k-1} + small_margin
+            // Simple forward pass projection
+            const minDiff = 0.05; // Minimum step to ensure strict monotonicity
+            for (let k = 1; k <= state.M; k++) {
+                if (state.coeffs[k] < state.coeffs[k - 1] + minDiff) {
+                    state.coeffs[k] = state.coeffs[k - 1] + minDiff;
+                }
+            }
+
+            // 4. Update UI
+            state.lossHistory.push(currentLoss);
+            if (state.lossHistory.length > 200) state.lossHistory.shift();
+
+            lossValueDiv.innerText = `Loss: ${currentLoss.toFixed(4)}`;
+
+            // "Wow" Factor: Update sliders in real-time
+            if (state.iteration % 2 === 0) { // Throttle DOM updates slightly
+                updateSliders();
+                updatePlots();
+            }
+
+            state.iteration++;
+            state.animationId = requestAnimationFrame(optimizationLoop);
+        }
+
+        // --- Hyperparameters ---
+        function updateDegree() {
+            const newM = parseInt(document.getElementById('degree-input').value);
+            if (newM < 2 || newM > 50) {
+                alert('Degree must be between 2 and 50');
+                return;
+            }
+            state.M = newM;
+            resetCoeffs(); // Re-initialize coefficients
+            createSliders(); // Re-create sliders
+            updatePlots();
+        }
+
+        // Learning Rate Sync
+        const lrInput = document.getElementById('lr-input');
+        const lrSlider = document.getElementById('lr-slider');
+
+        lrSlider.addEventListener('input', (e) => {
+            const logVal = parseFloat(e.target.value);
+            const val = Math.pow(10, logVal);
+            state.learningRate = val;
+            lrInput.value = val.toFixed(4);
+        });
+
+        lrInput.addEventListener('change', (e) => {
+            let val = parseFloat(e.target.value);
+            if (val <= 0) val = 1e-4;
+            state.learningRate = val;
+            lrSlider.value = Math.log10(val);
+        });
+
+        // --- Init ---
+        console.log('Script started');
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded fired');
+            createSliders();
+            generateData('gaussian'); // Default data
+
+            // Init LR controls
+            lrSlider.value = Math.log10(state.learningRate);
+            lrInput.value = state.learningRate;
+
+            console.log('App Initialized');
+        });
+    </script>
+</body>
+
+</html>
