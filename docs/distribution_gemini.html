@@ -135,16 +135,21 @@
                         <canvas id="mainCanvas"></canvas>
                     </div>
 
-                    <!-- R Code Section -->
+                    <!-- Code Section -->
                     <div
                         style="margin-top: 20px; background: #f4f4f4; padding: 15px; border-radius: 5px; border: 1px solid #ddd; position: relative;">
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h4 style="margin: 0; color: #555;">R Code Snippet</h4>
-                            <button id="copyRCodeBtn"
+                            <div class="code-tabs" style="display: flex; gap: 10px;">
+                                <button class="tab-btn active" data-lang="r"
+                                    style="padding: 5px 10px; cursor: pointer; border: none; background: #ddd; border-radius: 3px; font-weight: bold;">R</button>
+                                <button class="tab-btn" data-lang="python"
+                                    style="padding: 5px 10px; cursor: pointer; border: none; background: transparent; border-radius: 3px; color: #666;">Python</button>
+                            </div>
+                            <button id="copyCodeBtn"
                                 style="padding: 4px 8px; font-size: 0.8rem; cursor: pointer; background: #fff; border: 1px solid #ccc; border-radius: 3px;">Copy</button>
                         </div>
-                        <pre id="rCodeDisplay"
+                        <pre id="codeDisplay"
                             style="margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; color: #333;"></pre>
                     </div>
                 </div>
@@ -723,20 +728,228 @@ sum(x * p)
             return code;
         }
 
-        const rCodeDisplay = document.getElementById('rCodeDisplay');
-        const copyRCodeBtn = document.getElementById('copyRCodeBtn');
+        // Python Code Generation
+        function generatePythonCode(dist) {
+            const name = dist.constructor.name;
+            let code = "import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.stats import ";
+            let params = "";
+            let distName = "";
+            let funcName = ""; // scipy stats function name
+            let minX = -5, maxX = 5;
+            let isDiscrete = !dist.isContinuous;
 
-        function updateRCode() {
-            rCodeDisplay.textContent = generateRCode(currentDist);
+            // Helper to format params
+            const fmt = (val) => Number.isInteger(val) ? val : val.toFixed(2);
+
+            // Determine import and params
+            switch (name) {
+                case 'Normal':
+                    distName = "Normal Distribution";
+                    funcName = "norm";
+                    code += "norm\n\n";
+                    params = `loc=${fmt(dist.params.mu.val)}, scale=${fmt(dist.params.sigma.val)}`;
+                    minX = dist.params.mu.val - 4 * dist.params.sigma.val;
+                    maxX = dist.params.mu.val + 4 * dist.params.sigma.val;
+                    break;
+                case 'StudentT':
+                    distName = "Student's t Distribution";
+                    funcName = "t";
+                    code += "t\n\n";
+                    params = `df=${fmt(dist.params.nu.val)}`;
+                    minX = -5; maxX = 5;
+                    break;
+                case 'StudentTLocScale':
+                    return `# Student's t (Location-Scale)
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import t
+
+nu = ${fmt(dist.params.nu.val)}
+mu = ${fmt(dist.params.mu.val)}
+sigma = ${fmt(dist.params.sigma.val)}
+
+# Scipy 't' is standard. Scale manually: Y = mu + sigma * X
+xs = np.linspace(${fmt(dist.params.mu.val - 5 * dist.params.sigma.val)}, ${fmt(dist.params.mu.val + 5 * dist.params.sigma.val)}, 200)
+# PDF
+ys = t.pdf((xs - mu)/sigma, df=nu) / sigma
+
+plt.plot(xs, ys, label='Student t (Loc-Scale)')
+plt.title('PDF of Student t (Loc-Scale)')
+plt.xlabel('x')
+plt.ylabel('Density')
+plt.show()
+
+# Probabilities
+p_val = t.cdf((0 - mu)/sigma, df=nu) # P(X <= 0)
+q_val = mu + sigma * t.ppf(0.95, df=nu) # 95th percentile
+r_vals = mu + sigma * t.rvs(df=nu, size=10) # Random samples
+`;
+                case 'Uniform':
+                    distName = "Uniform Distribution";
+                    funcName = "uniform";
+                    code += "uniform\n\n";
+                    // scipy uniform takes loc (min) and scale (max-min)
+                    params = `loc=${fmt(dist.params.a.val)}, scale=${fmt(dist.params.b.val - dist.params.a.val)}`;
+                    minX = Math.min(dist.params.a.val, dist.params.b.val) - 1;
+                    maxX = Math.max(dist.params.a.val, dist.params.b.val) + 1;
+                    break;
+                case 'Exponential':
+                    distName = "Exponential Distribution";
+                    funcName = "expon";
+                    code += "expon\n\n";
+                    // scipy expon scale = 1/lambda
+                    params = `scale=${fmt(1 / dist.params.lambda.val)}`;
+                    minX = 0; maxX = 10 / dist.params.lambda.val;
+                    break;
+                case 'LogNormal':
+                    distName = "Log-Normal Distribution";
+                    funcName = "lognorm";
+                    code += "lognorm\n\n";
+                    // scipy lognorm s=sigma, scale=exp(mu)
+                    params = `s=${fmt(dist.params.sigma.val)}, scale=np.exp(${fmt(dist.params.mu.val)})`;
+                    minX = 0; maxX = Math.exp(dist.params.mu.val + 3 * dist.params.sigma.val);
+                    break;
+                case 'GammaDist':
+                    distName = "Gamma Distribution";
+                    funcName = "gamma";
+                    code += "gamma\n\n";
+                    // scipy gamma a=shape, scale=scale
+                    params = `a=${fmt(dist.params.k.val)}, scale=${fmt(dist.params.theta.val)}`;
+                    minX = 0; maxX = dist.params.k.val * dist.params.theta.val * 3;
+                    break;
+                case 'BetaDist':
+                    distName = "Beta Distribution";
+                    funcName = "beta";
+                    code += "beta\n\n";
+                    params = `a=${fmt(dist.params.alpha.val)}, b=${fmt(dist.params.beta.val)}`;
+                    minX = 0; maxX = 1;
+                    break;
+                case 'Binomial':
+                    distName = "Binomial Distribution";
+                    funcName = "binom";
+                    code += "binom\n\n";
+                    params = `n=${dist.params.n.val}, p=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = dist.params.n.val;
+                    break;
+                case 'Poisson':
+                    distName = "Poisson Distribution";
+                    funcName = "poisson";
+                    code += "poisson\n\n";
+                    params = `mu=${fmt(dist.params.lambda.val)}`;
+                    minX = 0; maxX = dist.params.lambda.val * 3;
+                    break;
+                case 'Geometric':
+                    distName = "Geometric Distribution";
+                    funcName = "geom";
+                    code += "geom\n\n";
+                    params = `p=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = 20;
+                    break;
+                case 'NegativeBinomial':
+                    distName = "Negative Binomial Distribution";
+                    funcName = "nbinom";
+                    code += "nbinom\n\n";
+                    params = `n=${dist.params.r.val}, p=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = 40;
+                    break;
+                case 'CustomDistribution':
+                    return `# Custom Distribution
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Manually defined probabilities
+x = np.array([${dist.data.map(d => d.x).join(', ')}])
+p = np.array([${dist.data.map(d => d.p.toFixed(3)).join(', ')}])
+
+# Plot
+plt.vlines(x, 0, p, colors='blue', lw=2, label='Custom PMF')
+plt.plot(x, p, 'bo')
+plt.title('Custom Distribution')
+plt.xlabel('x')
+plt.ylabel('Probability')
+plt.show()
+
+# Mean
+mean_val = np.sum(x * p)
+`;
+            }
+
+            code += `# ${distName}\n`;
+
+            // Define distribution object
+            code += `dist = ${funcName}(${params})\n\n`;
+
+            if (isDiscrete) {
+                code += `xs = np.arange(${minX}, ${maxX + 1})\n`;
+                code += `ys = dist.pmf(xs)\n`;
+                code += `plt.vlines(xs, 0, ys, colors='blue', lw=2, label='PMF')\n`;
+                code += `plt.plot(xs, ys, 'bo')\n`;
+                code += `plt.ylabel('Probability')\n`;
+                code += `plt.title('PMF of ${distName}')\n`;
+            } else {
+                code += `xs = np.linspace(${fmt(minX)}, ${fmt(maxX)}, 200)\n`;
+                code += `ys = dist.pdf(xs)\n`;
+                code += `plt.plot(xs, ys, 'b-', lw=2, label='PDF')\n`;
+                code += `plt.ylabel('Density')\n`;
+                code += `plt.title('PDF of ${distName}')\n`;
+            }
+
+            code += `plt.xlabel('x')\n`;
+            code += `plt.show()\n\n`;
+
+            // CDF, Quantile, Random
+            if (isDiscrete) {
+                code += `dist.cdf(${Math.floor((minX + maxX) / 2)}) # P(X <= k)\n`;
+            } else {
+                code += `dist.cdf(0) # CDF at x=0\n`;
+            }
+
+            code += `dist.ppf(0.95) # 95th percentile\n`;
+            code += `dist.rvs(size=10) # 10 random samples`;
+
+            return code;
         }
 
-        copyRCodeBtn.addEventListener('click', () => {
-            const code = rCodeDisplay.textContent;
+        const codeDisplay = document.getElementById('codeDisplay');
+        const copyCodeBtn = document.getElementById('copyCodeBtn');
+        let currentLang = 'r'; // 'r' or 'python'
+
+        function updateCode() {
+            if (currentLang === 'r') {
+                codeDisplay.textContent = generateRCode(currentDist);
+            } else {
+                codeDisplay.textContent = generatePythonCode(currentDist);
+            }
+        }
+
+        // Tab Switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Update active state
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.style.background = 'transparent';
+                    b.style.fontWeight = 'normal';
+                    b.style.color = '#666';
+                });
+                e.target.classList.add('active');
+                e.target.style.background = '#ddd';
+                e.target.style.fontWeight = 'bold';
+                e.target.style.color = '#000';
+
+                // Update Lang
+                currentLang = e.target.getAttribute('data-lang');
+                updateCode();
+            });
+        });
+
+        copyCodeBtn.addEventListener('click', () => {
+            const code = codeDisplay.textContent;
             navigator.clipboard.writeText(code).then(() => {
-                const originalText = copyRCodeBtn.textContent;
-                copyRCodeBtn.textContent = 'Copied!';
+                const originalText = copyCodeBtn.textContent;
+                copyCodeBtn.textContent = 'Copied!';
                 setTimeout(() => {
-                    copyRCodeBtn.textContent = originalText;
+                    copyCodeBtn.textContent = originalText;
                 }, 2000);
             }).catch(err => {
                 console.error('Failed to copy: ', err);
@@ -952,7 +1165,7 @@ sum(x * p)
                     // If autoZoom is unchecked, we just don't update viewState, so it stays fixed.
 
                     // Update R Code
-                    updateRCode();
+                    updateCode();
 
                     draw();
                     updateStats();
@@ -1002,7 +1215,7 @@ sum(x * p)
             interactionState.selectedP = 0.5;
 
             setupParamsUI();
-            updateRCode(); // Update R code on switch
+            updateCode(); // Update R code on switch
             draw();
             updateStats();
         });
