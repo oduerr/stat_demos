@@ -66,14 +66,6 @@
 </head>
 
 <body>
-    <header>
-        <div class="title">Expected Value as Center of Mass</div>
-        <div class="subtitle">
-            Explore how the Expected Value (E[X]) acts as the balancing point (center of mass) for probability
-            distributions.
-        </div>
-    </header>
-
     <main>
         <div class="grid">
             <section class="card">
@@ -141,6 +133,14 @@
                     <!-- Visualization Section -->
                     <div class="canvas-container" id="canvasWrapper">
                         <canvas id="mainCanvas"></canvas>
+                    </div>
+
+                    <!-- R Code Section -->
+                    <div
+                        style="margin-top: 20px; background: #f4f4f4; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">
+                        <h4 style="margin-top: 0; margin-bottom: 10px; color: #555;">R Code Snippet</h4>
+                        <pre id="rCodeDisplay"
+                            style="margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; color: #333;"></pre>
                     </div>
                 </div>
             </section>
@@ -553,7 +553,178 @@
             }
         }
 
-        // --- App Controller ---
+        // R Code Generation
+        function generateRCode(dist) {
+            const name = dist.constructor.name;
+            let code = "";
+            let params = "";
+            let distName = "";
+            let funcSuffix = "";
+            let minX = -5, maxX = 5;
+            let isDiscrete = !dist.isContinuous;
+
+            // Helper to format params
+            const fmt = (val) => Number.isInteger(val) ? val : val.toFixed(2);
+
+            switch (name) {
+                case 'Normal':
+                    distName = "Normal Distribution";
+                    funcSuffix = "norm";
+                    params = `mean=${fmt(dist.params.mu.val)}, sd=${fmt(dist.params.sigma.val)}`;
+                    minX = dist.params.mu.val - 4 * dist.params.sigma.val;
+                    maxX = dist.params.mu.val + 4 * dist.params.sigma.val;
+                    break;
+                case 'StudentT':
+                    distName = "Student's t Distribution";
+                    funcSuffix = "t";
+                    params = `df=${fmt(dist.params.nu.val)}`;
+                    minX = -5; maxX = 5;
+                    break;
+                case 'StudentTLocScale':
+                    // R doesn't have built-in loc-scale t, usually need extra package or manual scaling
+                    // We'll show manual scaling
+                    return `# Student's t (Location-Scale)
+# R base 'dt' is standard. For loc-scale: Y = mu + sigma * X
+nu = ${fmt(dist.params.nu.val)}
+mu = ${fmt(dist.params.mu.val)}
+sigma = ${fmt(dist.params.sigma.val)}
+
+xs = seq(${fmt(dist.params.mu.val - 5 * dist.params.sigma.val)}, ${fmt(dist.params.mu.val + 5 * dist.params.sigma.val)}, length=200)
+# PDF
+ys = dt((xs - mu)/sigma, df=nu) / sigma
+
+plot(xs, ys, type='l', lwd=2, col='blue', main='Student t (Loc-Scale)', ylab='Density', xlab='x')
+
+# Probabilities
+p_val = pt((0 - mu)/sigma, df=nu) # P(X <= 0)
+q_val = mu + sigma * qt(0.95, df=nu) # 95th percentile
+r_vals = mu + sigma * rt(10, df=nu) # Random samples
+`;
+                case 'Uniform':
+                    distName = "Uniform Distribution";
+                    funcSuffix = "unif";
+                    params = `min=${fmt(dist.params.a.val)}, max=${fmt(dist.params.b.val)}`;
+                    minX = Math.min(dist.params.a.val, dist.params.b.val) - 1;
+                    maxX = Math.max(dist.params.a.val, dist.params.b.val) + 1;
+                    break;
+                case 'Exponential':
+                    distName = "Exponential Distribution";
+                    funcSuffix = "exp";
+                    params = `rate=${fmt(dist.params.lambda.val)}`;
+                    minX = 0; maxX = 10 / dist.params.lambda.val;
+                    break;
+                case 'LogNormal':
+                    distName = "Log-Normal Distribution";
+                    funcSuffix = "lnorm";
+                    params = `meanlog=${fmt(dist.params.mu.val)}, sdlog=${fmt(dist.params.sigma.val)}`;
+                    minX = 0; maxX = Math.exp(dist.params.mu.val + 3 * dist.params.sigma.val);
+                    break;
+                case 'GammaDist':
+                    distName = "Gamma Distribution";
+                    funcSuffix = "gamma";
+                    // k=shape, theta=scale
+                    params = `shape=${fmt(dist.params.k.val)}, scale=${fmt(dist.params.theta.val)}`;
+                    minX = 0; maxX = dist.params.k.val * dist.params.theta.val * 3;
+                    break;
+                case 'BetaDist':
+                    distName = "Beta Distribution";
+                    funcSuffix = "beta";
+                    params = `shape1=${fmt(dist.params.alpha.val)}, shape2=${fmt(dist.params.beta.val)}`;
+                    minX = 0; maxX = 1;
+                    break;
+                case 'Binomial':
+                    distName = "Binomial Distribution";
+                    funcSuffix = "binom";
+                    params = `size=${dist.params.n.val}, prob=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = dist.params.n.val;
+                    break;
+                case 'Poisson':
+                    distName = "Poisson Distribution";
+                    funcSuffix = "pois";
+                    params = `lambda=${fmt(dist.params.lambda.val)}`;
+                    minX = 0; maxX = dist.params.lambda.val * 3;
+                    break;
+                case 'Geometric':
+                    distName = "Geometric Distribution";
+                    funcSuffix = "geom";
+                    params = `prob=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = 20;
+                    break;
+                case 'NegativeBinomial':
+                    distName = "Negative Binomial Distribution";
+                    funcSuffix = "nbinom";
+                    params = `size=${dist.params.r.val}, prob=${fmt(dist.params.p.val)}`;
+                    minX = 0; maxX = 40;
+                    break;
+                case 'CustomDistribution':
+                    return `# Custom Distribution
+# Manually defined probabilities
+x = c(${dist.data.map(d => d.x).join(', ')})
+p = c(${dist.data.map(d => d.p.toFixed(3)).join(', ')})
+
+# Plot
+plot(x, p, type='h', lwd=2, col='blue', main='Custom Distribution', ylab='Probability', xlab='x')
+points(x, p, pch=16, col='blue')
+
+# Mean
+sum(x * p)
+`;
+            }
+
+            code += `# ${distName}\n`;
+
+            // Define parameters variables for clarity
+            // Actually, putting them directly in function calls is often cleaner for copy-paste unless complex.
+            // Let's stick to the requested format: define vars first.
+
+            // Extract params to vars
+            let paramVars = "";
+            let callParams = "";
+
+            if (name === 'Normal') {
+                paramVars = `mu = ${fmt(dist.params.mu.val)}\nsigma = ${fmt(dist.params.sigma.val)}`;
+                callParams = `mean=mu, sd=sigma`;
+            } else if (name === 'Binomial') {
+                paramVars = `n = ${dist.params.n.val}\np = ${fmt(dist.params.p.val)}`;
+                callParams = `size=n, prob=p`;
+            } else {
+                // Generic fallback
+                callParams = params;
+            }
+
+            if (paramVars) code += `${paramVars}\n\n`;
+
+            if (isDiscrete) {
+                code += `xs = ${minX}:${maxX}\n`;
+                code += `ys = d${funcSuffix}(xs, ${callParams})\n`;
+                code += `plot(xs, ys, type='h', lwd=2, col='blue', ylab='Probability', xlab='x', main='${distName}')\n`;
+                code += `points(xs, ys, pch=16, col='blue')\n\n`;
+            } else {
+                code += `xs = seq(${fmt(minX)}, ${fmt(maxX)}, length=200)\n`;
+                code += `ys = d${funcSuffix}(xs, ${callParams})\n`;
+                code += `plot(xs, ys, type='l', lwd=2, col='blue', ylab='Density', xlab='x', main='${distName}')\n\n`;
+            }
+
+            // CDF, Quantile, Random
+            if (isDiscrete) {
+                code += `p${funcSuffix}(${Math.floor((minX + maxX) / 2)}, ${callParams}) # P(X <= k)\n`;
+            } else {
+                code += `p${funcSuffix}(0, ${callParams}) # CDF at x=0\n`;
+            }
+
+            code += `q${funcSuffix}(0.95, ${callParams}) # 95th percentile\n`;
+            code += `r${funcSuffix}(10, ${callParams}) # 10 random samples`;
+
+            return code;
+        }
+
+        const rCodeDisplay = document.getElementById('rCodeDisplay');
+
+        function updateRCode() {
+            rCodeDisplay.textContent = generateRCode(currentDist);
+        }
+
+        // App Controller
         const canvas = document.getElementById('mainCanvas');
         const ctx = canvas.getContext('2d');
         const distSelect = document.getElementById('distSelect');
@@ -761,6 +932,9 @@
                     }
                     // If autoZoom is unchecked, we just don't update viewState, so it stays fixed.
 
+                    // Update R Code
+                    updateRCode();
+
                     draw();
                     updateStats();
                 });
@@ -798,7 +972,18 @@
             viewState.isLocked = false;
             viewState.isAnimating = false;
 
+            // Reset Interaction State to Median
+            let median = currentDist.getMean();
+            if (isNaN(median)) {
+                // Approximate median for distributions where mean != median or undefined
+                // Simple fallback: middle of range
+                median = (ideal.min + ideal.max) / 2;
+            }
+            interactionState.selectedX = median;
+            interactionState.selectedP = 0.5;
+
             setupParamsUI();
+            updateRCode(); // Update R code on switch
             draw();
             updateStats();
         });
@@ -999,7 +1184,7 @@
                     // Probability Mode Highlighting
                     if (currentMode === 'probability' && interactionState.selectedX !== null) {
                         if (d.x <= interactionState.selectedX) {
-                            ctx.fillStyle = '#2a6ebb'; // Highlight
+                            ctx.fillStyle = '#1e5b9e'; // Much darker/pronounced highlight
                         }
                     }
 
@@ -1214,7 +1399,8 @@
                 ctx.fillStyle = '#4a90e2';
                 ctx.font = 'bold 12px Inter';
                 ctx.textAlign = 'right';
-                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, w - padding.right, bottomPlotTopY - 10);
+                // Position label near the PDF x-axis (topPlotBottomY)
+                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, w - padding.right, topPlotBottomY - 10);
 
                 // 5. Vertical line on PMF/PDF
                 ctx.beginPath();
