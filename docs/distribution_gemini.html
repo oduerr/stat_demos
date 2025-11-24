@@ -137,8 +137,13 @@
 
                     <!-- R Code Section -->
                     <div
-                        style="margin-top: 20px; background: #f4f4f4; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">
-                        <h4 style="margin-top: 0; margin-bottom: 10px; color: #555;">R Code Snippet</h4>
+                        style="margin-top: 20px; background: #f4f4f4; padding: 15px; border-radius: 5px; border: 1px solid #ddd; position: relative;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; color: #555;">R Code Snippet</h4>
+                            <button id="copyRCodeBtn"
+                                style="padding: 4px 8px; font-size: 0.8rem; cursor: pointer; background: #fff; border: 1px solid #ccc; border-radius: 3px;">Copy</button>
+                        </div>
                         <pre id="rCodeDisplay"
                             style="margin: 0; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; color: #333;"></pre>
                     </div>
@@ -697,12 +702,12 @@ sum(x * p)
             if (isDiscrete) {
                 code += `xs = ${minX}:${maxX}\n`;
                 code += `ys = d${funcSuffix}(xs, ${callParams})\n`;
-                code += `plot(xs, ys, type='h', lwd=2, col='blue', ylab='Probability', xlab='x', main='${distName}')\n`;
+                code += `plot(xs, ys, type='h', lwd=2, col='blue', ylab='Probability', xlab='x', main='PMF of the ${distName}')\n`;
                 code += `points(xs, ys, pch=16, col='blue')\n\n`;
             } else {
                 code += `xs = seq(${fmt(minX)}, ${fmt(maxX)}, length=200)\n`;
                 code += `ys = d${funcSuffix}(xs, ${callParams})\n`;
-                code += `plot(xs, ys, type='l', lwd=2, col='blue', ylab='Density', xlab='x', main='${distName}')\n\n`;
+                code += `plot(xs, ys, type='l', lwd=2, col='blue', ylab='Density', xlab='x', main='PDF of the ${distName}')\n\n`;
             }
 
             // CDF, Quantile, Random
@@ -719,10 +724,24 @@ sum(x * p)
         }
 
         const rCodeDisplay = document.getElementById('rCodeDisplay');
+        const copyRCodeBtn = document.getElementById('copyRCodeBtn');
 
         function updateRCode() {
             rCodeDisplay.textContent = generateRCode(currentDist);
         }
+
+        copyRCodeBtn.addEventListener('click', () => {
+            const code = rCodeDisplay.textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = copyRCodeBtn.textContent;
+                copyRCodeBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyRCodeBtn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        });
 
         // App Controller
         const canvas = document.getElementById('mainCanvas');
@@ -1398,9 +1417,11 @@ sum(x * p)
                 // 4. Label P(X <= x)
                 ctx.fillStyle = '#4a90e2';
                 ctx.font = 'bold 12px Inter';
-                ctx.textAlign = 'right';
-                // Position label near the PDF x-axis (topPlotBottomY)
-                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, w - padding.right, topPlotBottomY - 10);
+                ctx.textAlign = 'left';
+                // Position label near the Y-axis of the CDF plot (bottomPlotTopY area)
+                // User requested: "at the CDF close close to the y-axis in the CDF plot. It should be above the dashed line."
+                // Dashed line is at cdfY.
+                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, padding.left + 10, cdfY - 10);
 
                 // 5. Vertical line on PMF/PDF
                 ctx.beginPath();
