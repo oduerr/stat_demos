@@ -11,7 +11,7 @@
         .canvas-container {
             position: relative;
             width: 100%;
-            height: 400px;
+            height: 600px;
             background: #fafafa;
             border-radius: 8px;
             border: 1px solid #eee;
@@ -112,11 +112,6 @@
                         </div>
                     </div>
 
-                    <!-- Visualization Section -->
-                    <div class="canvas-container" id="canvasWrapper">
-                        <canvas id="mainCanvas"></canvas>
-                    </div>
-
                     <div class="stats">
                         <div class="stat-item">
                             <span class="stat-value" id="meanValue">0.00</span>
@@ -126,6 +121,11 @@
                             <span class="stat-value" id="stdValue">0.00</span>
                             <span class="stat-label">Std Dev (σ)</span>
                         </div>
+                    </div>
+
+                    <!-- Visualization Section -->
+                    <div class="canvas-container" id="canvasWrapper">
+                        <canvas id="mainCanvas"></canvas>
                     </div>
                 </div>
             </section>
@@ -770,17 +770,22 @@
         function draw() {
             const w = canvas.width;
             const h = canvas.height;
-            const padding = { top: 60, right: 40, bottom: 60, left: 80 }; // Increased top padding for title
+            const padding = { top: 40, right: 40, bottom: 40, left: 60, gap: 60 };
+
+            // Calculate heights
+            // We have two plots.
+            // Top Plot: PMF/PDF
+            // Bottom Plot: CDF
+            const availableH = h - padding.top - padding.bottom - padding.gap;
+            const plotH = availableH / 2;
+
+            const topPlotBottomY = padding.top + plotH;
+            const bottomPlotTopY = topPlotBottomY + padding.gap;
+            const bottomPlotBottomY = bottomPlotTopY + plotH;
+
             const plotW = w - padding.left - padding.right;
-            const plotH = h - padding.top - padding.bottom;
 
             ctx.clearRect(0, 0, w, h);
-
-            // Title
-            ctx.textAlign = 'center';
-            ctx.fillStyle = '#333';
-            ctx.font = 'bold 18px Inter';
-            ctx.fillText(currentDist.getDescription(), w / 2, 30);
 
             // Scales using ViewState
             const minX = viewState.minX;
@@ -788,40 +793,60 @@
             const maxP = viewState.maxP;
 
             const xScale = (x) => padding.left + ((x - minX) / (maxX - minX)) * plotW;
-            const yScale = (p) => h - padding.bottom - (p / maxP) * plotH;
 
-            // Draw Axes
+            // Top Plot Y Scale (PMF/PDF)
+            const yScalePMF = (p) => topPlotBottomY - (p / maxP) * plotH;
+
+            // Bottom Plot Y Scale (CDF) - Fixed 0 to 1
+            const yScaleCDF = (p) => bottomPlotBottomY - p * plotH;
+
+            // --- Draw Axes & Labels ---
+
+            // Top Plot Axes
             ctx.beginPath();
             ctx.strokeStyle = '#ccc';
             ctx.lineWidth = 2;
             ctx.moveTo(padding.left, padding.top);
-            ctx.lineTo(padding.left, h - padding.bottom); // Y axis
-            ctx.lineTo(w - padding.right, h - padding.bottom); // X axis
+            ctx.lineTo(padding.left, topPlotBottomY); // Y axis
+            ctx.lineTo(w - padding.right, topPlotBottomY); // X axis
             ctx.stroke();
 
-            // Static Vertical Line at x=0
+            // Bottom Plot Axes
+            ctx.beginPath();
+            ctx.moveTo(padding.left, bottomPlotTopY);
+            ctx.lineTo(padding.left, bottomPlotBottomY); // Y axis
+            ctx.lineTo(w - padding.right, bottomPlotBottomY); // X axis
+            ctx.stroke();
+
+            // Static Vertical Line at x=0 (across both if visible)
             if (minX <= 0 && maxX >= 0) {
                 const x0 = xScale(0);
                 ctx.beginPath();
                 ctx.strokeStyle = '#ddd';
                 ctx.lineWidth = 1;
                 ctx.setLineDash([5, 5]);
+                // Top
                 ctx.moveTo(x0, padding.top);
-                ctx.lineTo(x0, h - padding.bottom);
+                ctx.lineTo(x0, topPlotBottomY);
+                // Bottom
+                ctx.moveTo(x0, bottomPlotTopY);
+                ctx.lineTo(x0, bottomPlotBottomY);
                 ctx.stroke();
                 ctx.setLineDash([]); // Reset
             }
 
-            // Y-Axis Ticks and Values
+            // --- Y-Axis Ticks & Labels ---
+
             ctx.fillStyle = '#666';
             ctx.font = '10px Inter';
             ctx.textAlign = 'right';
             ctx.textBaseline = 'middle';
 
+            // Top Plot Ticks (PMF/PDF)
             let tickStep = maxP / 5;
             for (let i = 0; i <= 5; i++) {
                 const p = i * tickStep;
-                const y = yScale(p);
+                const y = yScalePMF(p);
                 ctx.beginPath();
                 ctx.moveTo(padding.left, y);
                 ctx.lineTo(padding.left - 5, y);
@@ -829,27 +854,52 @@
                 ctx.fillText(p.toFixed(2), padding.left - 8, y);
             }
 
-            // Y-Axis Label
+            // Bottom Plot Ticks (CDF)
+            for (let i = 0; i <= 5; i++) {
+                const p = i * 0.2;
+                const y = yScaleCDF(p);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(padding.left - 5, y);
+                ctx.stroke();
+                ctx.fillText(p.toFixed(1), padding.left - 8, y);
+            }
+
+            // Y-Axis Titles
             ctx.save();
-            ctx.translate(20, h / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Inter';
+
+            // Top Title
+            ctx.translate(20, padding.top + plotH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(currentDist.isContinuous ? 'PDF' : 'PMF', 0, 0);
+            ctx.restore();
+
+            // Bottom Title
+            ctx.save();
+            ctx.translate(20, bottomPlotTopY + plotH / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.fillStyle = '#666';
-            ctx.font = '14px Inter';
-            ctx.fillText(currentDist.isContinuous ? 'Probability Density' : 'Probability', 0, 0);
+            ctx.font = '12px Inter';
+            ctx.fillText('CDF', 0, 0);
             ctx.restore();
 
-            // Draw Distribution
+            // --- Draw Distributions ---
+
+            // 1. PMF/PDF (Top Plot)
             if (currentDist.isContinuous) {
                 // Draw Curve
                 ctx.beginPath();
-                ctx.moveTo(xScale(currentDist.data[0].x), yScale(currentDist.data[0].p));
+                ctx.moveTo(xScale(currentDist.data[0].x), yScalePMF(currentDist.data[0].p));
                 for (let i = 1; i < currentDist.data.length; i++) {
-                    ctx.lineTo(xScale(currentDist.data[i].x), yScale(currentDist.data[i].p));
+                    ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
                 }
                 // Close path for fill
-                ctx.lineTo(xScale(currentDist.data[currentDist.data.length - 1].x), h - padding.bottom);
-                ctx.lineTo(xScale(currentDist.data[0].x), h - padding.bottom);
+                ctx.lineTo(xScale(currentDist.data[currentDist.data.length - 1].x), topPlotBottomY);
+                ctx.lineTo(xScale(currentDist.data[0].x), topPlotBottomY);
                 ctx.closePath();
 
                 ctx.fillStyle = 'rgba(74, 144, 226, 0.2)';
@@ -857,32 +907,21 @@
 
                 // Stroke
                 ctx.beginPath();
-                ctx.moveTo(xScale(currentDist.data[0].x), yScale(currentDist.data[0].p));
+                ctx.moveTo(xScale(currentDist.data[0].x), yScalePMF(currentDist.data[0].p));
                 for (let i = 1; i < currentDist.data.length; i++) {
-                    ctx.lineTo(xScale(currentDist.data[i].x), yScale(currentDist.data[i].p));
+                    ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
                 }
                 ctx.strokeStyle = 'rgba(74, 144, 226, 1)';
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                // X-axis labels (just min/max for now or some steps)
-                ctx.fillStyle = '#666';
-                ctx.textAlign = 'center';
-                const xStep = (maxX - minX) / 5; // 5 ticks for continuous
-                for (let i = 0; i <= 5; i++) {
-                    const val = minX + i * xStep;
-                    const xPos = xScale(val);
-                    ctx.fillText(val.toFixed(1), xPos, h - padding.bottom + 20);
-                }
-
             } else {
                 // Draw Lollipop Plot (Discrete)
-                // barWidth is now relative to the new minX/maxX scale
                 const barWidth = (plotW / (maxX - minX)) * 0.6;
                 currentDist.data.forEach((d, i) => {
-                    const x = xScale(d.x); // Discrete points are exact
-                    const y = yScale(d.p);
-                    const groundY = h - padding.bottom;
+                    const x = xScale(d.x);
+                    const y = yScalePMF(d.p);
+                    const groundY = topPlotBottomY;
 
                     // Line
                     ctx.beginPath();
@@ -904,34 +943,143 @@
                         ctx.fillStyle = '#2a6ebb';
                     }
                     ctx.fill();
-
-                    // X labels
-                    ctx.fillStyle = '#666';
-                    ctx.font = '12px Inter';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(d.x, x, h - padding.bottom + 20);
                 });
             }
 
-            // Draw Fulcrum (Mean)
+            // 2. CDF (Bottom Plot)
+            // Calculate CDF points
+            let cdfData = [];
+            let cumProb = 0;
+
+            if (currentDist.isContinuous) {
+                // For continuous, we integrate p * dx
+                // Assuming uniform step size in generatePoints
+                if (currentDist.data.length > 1) {
+                    const dx = currentDist.data[1].x - currentDist.data[0].x;
+                    for (let i = 0; i < currentDist.data.length; i++) {
+                        cumProb += currentDist.data[i].p * dx;
+                        // Clamp to 1 just in case
+                        if (cumProb > 1) cumProb = 1;
+                        cdfData.push({ x: currentDist.data[i].x, p: cumProb });
+                    }
+                    // Normalize if total is not exactly 1 (due to finite range or approximation)
+                    // But for visualization, raw cumsum might be better to show if it doesn't sum to 1?
+                    // No, let's normalize the final point to 1 for better visuals if it's close.
+                    // Actually, for standard distributions, it should be close.
+                    // Let's just plot what we have.
+                }
+
+                // Draw CDF Curve
+                if (cdfData.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(xScale(cdfData[0].x), yScaleCDF(cdfData[0].p));
+                    for (let i = 1; i < cdfData.length; i++) {
+                        ctx.lineTo(xScale(cdfData[i].x), yScaleCDF(cdfData[i].p));
+                    }
+                    ctx.strokeStyle = '#e056fd'; // Different color for CDF
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+            } else {
+                // Discrete CDF (Step Function)
+                // Sort data by x just in case
+                let sortedData = [...currentDist.data].sort((a, b) => a.x - b.x);
+
+                // We need to draw steps.
+                // From minX to first point: 0
+                // At first point: jump to p1
+                // Then flat until next point...
+
+                // Let's generate points for drawing
+                // We'll draw lines.
+
+                // Start from minX (or slightly before first point)
+                let currentCum = 0;
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#e056fd';
+                ctx.lineWidth = 2;
+
+                // Start at left edge of plot or minX
+                // If minX is far left, we start at 0 height.
+                let startX = minX;
+                let startY = yScaleCDF(0);
+                ctx.moveTo(xScale(startX), startY);
+
+                for (let i = 0; i < sortedData.length; i++) {
+                    const pt = sortedData[i];
+                    // Draw horizontal line to this x
+                    ctx.lineTo(xScale(pt.x), yScaleCDF(currentCum));
+
+                    // Jump up
+                    currentCum += pt.p;
+                    if (currentCum > 1.001) currentCum = 1; // Tolerance
+
+                    ctx.lineTo(xScale(pt.x), yScaleCDF(currentCum));
+                }
+
+                // Draw line to right edge
+                ctx.lineTo(xScale(maxX), yScaleCDF(currentCum));
+
+                ctx.stroke();
+
+                // Optional: Dots at jump points? Maybe too cluttered.
+            }
+
+            // --- X-Axis Labels (Bottom only or both?) ---
+            // Let's do both for clarity as requested "aligned"
+            ctx.fillStyle = '#666';
+            ctx.textAlign = 'center';
+            const xStep = (maxX - minX) / 10;
+
+            // Helper to draw X labels
+            const drawXLabels = (yPos) => {
+                for (let i = 0; i <= 10; i++) {
+                    const val = minX + i * xStep;
+                    const xPos = xScale(val);
+                    // Avoid drawing if out of bounds
+                    if (xPos >= padding.left && xPos <= w - padding.right) {
+                        ctx.fillText(val.toFixed(1), xPos, yPos + 15);
+                    }
+                }
+            };
+
+            // Draw X labels for bottom plot
+            drawXLabels(bottomPlotBottomY);
+
+            // Optional: Draw X labels for top plot?
+            // drawXLabels(topPlotBottomY); // Might clutter the gap. Let's stick to bottom.
+
+            // --- Mean & Std Dev Indicators ---
             const mean = currentDist.getMean();
             if (mean !== undefined && !isNaN(mean)) {
                 const fulcrumX = xScale(mean);
-                const fulcrumY = h - padding.bottom;
 
-                // Draw Triangle
+                // Draw vertical line through BOTH plots
+                ctx.beginPath();
+                ctx.strokeStyle = '#f5a623'; // Orange
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(fulcrumX, padding.top);
+                ctx.lineTo(fulcrumX, bottomPlotBottomY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw Triangle Fulcrum at bottom of Top Plot
+                const fulcrumY = topPlotBottomY;
                 ctx.beginPath();
                 ctx.fillStyle = '#f5a623';
                 ctx.moveTo(fulcrumX, fulcrumY);
-                ctx.lineTo(fulcrumX - 10, fulcrumY + 15);
-                ctx.lineTo(fulcrumX + 10, fulcrumY + 15);
+                ctx.lineTo(fulcrumX - 8, fulcrumY + 12);
+                ctx.lineTo(fulcrumX + 8, fulcrumY + 12);
                 ctx.closePath();
                 ctx.fill();
 
-                // Draw Std Dev indicators
+                // Draw Std Dev indicators on Top Plot
                 const std = currentDist.getStdDev();
                 if (std !== undefined && !isNaN(std)) {
-                    const sigmaY = fulcrumY + 25;
+                    const sigmaY = fulcrumY + 20; // Below fulcrum
 
                     ctx.beginPath();
                     ctx.strokeStyle = '#f5a623';
@@ -946,17 +1094,12 @@
 
                     // Caps for std dev line
                     ctx.beginPath();
-                    ctx.moveTo(startX, sigmaY - 5);
-                    ctx.lineTo(startX, sigmaY + 5);
-                    ctx.moveTo(endX, sigmaY - 5);
-                    ctx.lineTo(endX, sigmaY + 5);
+                    ctx.moveTo(startX, sigmaY - 4);
+                    ctx.lineTo(startX, sigmaY + 4);
+                    ctx.moveTo(endX, sigmaY - 4);
+                    ctx.lineTo(endX, sigmaY + 4);
                     ctx.stroke();
                 }
-
-                // Label for Mean
-                ctx.fillStyle = '#f5a623';
-                ctx.font = 'bold 14px Inter';
-                ctx.fillText('▲', fulcrumX, fulcrumY + 12);
             }
         }
 
@@ -978,18 +1121,32 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // Check if clicked on a bar
+            // Layout constants matching draw()
             const w = canvas.width;
             const h = canvas.height;
-            const padding = { top: 40, right: 40, bottom: 60, left: 80 };
+            const padding = { top: 40, right: 40, bottom: 40, left: 60, gap: 60 };
+            const availableH = h - padding.top - padding.bottom - padding.gap;
+            const plotH = availableH / 2;
             const plotW = w - padding.left - padding.right;
+
             const maxX = Math.max(...currentDist.data.map(d => d.x)) + 1;
-            const xScale = (x) => padding.left + (x / maxX) * plotW;
-            const barWidth = (plotW / maxX) * 0.6;
+            const minX = viewState.minX; // Use viewState minX for correct scaling
+
+            // Reconstruct xScale
+            const xScale = (x) => padding.left + ((x - minX) / (viewState.maxX - minX)) * plotW;
+
+            // Bar width approximation
+            const barWidth = (plotW / (viewState.maxX - minX)) * 0.6;
 
             currentDist.data.forEach((d, i) => {
                 const x = xScale(d.x);
-                if (mouseX >= x && mouseX <= x + barWidth) {
+                // Check if click is within bar bounds
+                // Note: Bars are drawn from topPlotBottomY upwards
+                const topPlotBottomY = padding.top + plotH;
+                const yScalePMF = (p) => topPlotBottomY - (p / viewState.maxP) * plotH;
+                const y = yScalePMF(d.p);
+
+                if (mouseX >= x && mouseX <= x + barWidth && mouseY >= y && mouseY <= topPlotBottomY) {
                     isDragging = true;
                     dragIndex = i;
                     dragStart = { x: mouseX, y: mouseY };
@@ -1015,22 +1172,30 @@
                 }
             }
 
+            // Layout constants
+            const w = canvas.width;
             const h = canvas.height;
-            const padding = { top: 40, right: 40, bottom: 60, left: 80 };
-            const plotW = canvas.width - padding.left - padding.right;
-            const plotH = h - padding.top - padding.bottom;
-            const maxX = Math.max(...currentDist.data.map(d => d.x)) + 1;
-            const maxP = Math.max(...currentDist.data.map(d => d.p), 0.5);
+            const padding = { top: 40, right: 40, bottom: 40, left: 60, gap: 60 };
+            const availableH = h - padding.top - padding.bottom - padding.gap;
+            const plotH = availableH / 2;
+            const plotW = w - padding.left - padding.right;
+            const topPlotBottomY = padding.top + plotH;
+
+            const maxX = viewState.maxX;
+            const minX = viewState.minX;
+            const maxP = viewState.maxP; // Use viewState maxP
 
             if (dragMode === 'vertical') {
-                let newP = (h - padding.bottom - mouseY) / plotH * maxP;
+                // Inverse of yScalePMF: y = topPlotBottomY - (p / maxP) * plotH
+                // p = (topPlotBottomY - y) / plotH * maxP
+                let newP = (topPlotBottomY - mouseY) / plotH * maxP;
                 newP = Math.max(0, newP);
                 currentDist.data[dragIndex].p = newP;
                 currentDist.normalize();
             } else if (dragMode === 'horizontal') {
                 // Calculate new X based on mouse position
-                // Inverse of xScale: x = (mouseX - padding.left) / plotW * maxX
-                let newX = Math.round((mouseX - padding.left) / plotW * maxX);
+                // Inverse of xScale: x = minX + (mouseX - padding.left) / plotW * (maxX - minX)
+                let newX = Math.round(minX + (mouseX - padding.left) / plotW * (maxX - minX));
                 newX = Math.max(0, newX); // No negative x
 
                 // Check if we moved to a new integer X
