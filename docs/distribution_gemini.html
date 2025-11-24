@@ -85,6 +85,21 @@
                     <div class="controls"
                         style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
                         <div class="control-group">
+                            <label>Mode</label>
+                            <div class="mode-selector" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                    <input type="radio" name="mode" value="expectation" checked> Expectation
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                    <input type="radio" name="mode" value="probability"> Probability (CDF)
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                    <input type="radio" name="mode" value="quantile"> Quantiles
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="control-group">
                             <label for="distSelect">Distribution</label>
                             <select id="distSelect">
                                 <optgroup label="Discrete">
@@ -565,9 +580,31 @@
 
         // Initial distribution
         let currentDist = new Binomial();
+
+        // Interaction State
+        let currentMode = 'expectation'; // 'expectation', 'probability', 'quantile'
+        let interactionState = {
+            selectedX: null, // For Probability Mode
+            selectedP: 0.5,  // For Quantile Mode
+            isDraggingHandle: false,
+            dragTarget: null // 'x-handle', 'y-handle', 'bar'
+        };
+
         let isDragging = false;
         let dragIndex = -1;
         // dragStart and dragMode are declared later, removing duplicates here.
+
+        // Mode Selection
+        document.querySelectorAll('input[name="mode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                currentMode = e.target.value;
+                // Reset interaction state on mode switch
+                interactionState.selectedX = currentDist.getMean();
+                if (isNaN(interactionState.selectedX)) interactionState.selectedX = (viewState.minX + viewState.maxX) / 2;
+                interactionState.selectedP = 0.5;
+                draw();
+            });
+        });
 
         // View State for Camera Catch-up
         let viewState = {
@@ -773,9 +810,6 @@
             const padding = { top: 40, right: 40, bottom: 40, left: 60, gap: 60 };
 
             // Calculate heights
-            // We have two plots.
-            // Top Plot: PMF/PDF
-            // Bottom Plot: CDF
             const availableH = h - padding.top - padding.bottom - padding.gap;
             const plotH = availableH / 2;
 
@@ -905,6 +939,25 @@
                 ctx.fillStyle = 'rgba(74, 144, 226, 0.2)';
                 ctx.fill();
 
+                // Probability Mode Shading
+                if (currentMode === 'probability' && interactionState.selectedX !== null) {
+                    // Shade area <= selectedX
+                    const idx = currentDist.data.findIndex(d => d.x > interactionState.selectedX);
+                    const endIndex = idx === -1 ? currentDist.data.length - 1 : idx;
+
+                    if (endIndex > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(xScale(currentDist.data[0].x), topPlotBottomY);
+                        for (let i = 0; i <= endIndex; i++) {
+                            ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
+                        }
+                        ctx.lineTo(xScale(currentDist.data[endIndex].x), topPlotBottomY);
+                        ctx.closePath();
+                        ctx.fillStyle = 'rgba(74, 144, 226, 0.5)'; // Darker shade
+                        ctx.fill();
+                    }
+                }
+
                 // Stroke
                 ctx.beginPath();
                 ctx.moveTo(xScale(currentDist.data[0].x), yScalePMF(currentDist.data[0].p));
@@ -942,6 +995,14 @@
                     if (currentDist instanceof CustomDistribution && i === dragIndex) {
                         ctx.fillStyle = '#2a6ebb';
                     }
+
+                    // Probability Mode Highlighting
+                    if (currentMode === 'probability' && interactionState.selectedX !== null) {
+                        if (d.x <= interactionState.selectedX) {
+                            ctx.fillStyle = '#2a6ebb'; // Highlight
+                        }
+                    }
+
                     ctx.fill();
                 });
             }
@@ -1051,55 +1112,181 @@
             // Optional: Draw X labels for top plot?
             // drawXLabels(topPlotBottomY); // Might clutter the gap. Let's stick to bottom.
 
-            // --- Mean & Std Dev Indicators ---
-            const mean = currentDist.getMean();
-            if (mean !== undefined && !isNaN(mean)) {
-                const fulcrumX = xScale(mean);
+            // --- Mode Specific Overlays ---
 
-                // Draw vertical line through BOTH plots
-                ctx.beginPath();
-                ctx.strokeStyle = '#f5a623'; // Orange
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(fulcrumX, padding.top);
-                ctx.lineTo(fulcrumX, bottomPlotBottomY);
-                ctx.stroke();
-                ctx.setLineDash([]);
+            if (currentMode === 'expectation') {
+                // Draw Fulcrum (Mean)
+                const mean = currentDist.getMean();
+                if (mean !== undefined && !isNaN(mean)) {
+                    const fulcrumX = xScale(mean);
 
-                // Draw Triangle Fulcrum at bottom of Top Plot
-                const fulcrumY = topPlotBottomY;
+                    // Vertical line
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#f5a623';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 4]);
+                    ctx.moveTo(fulcrumX, padding.top);
+                    ctx.lineTo(fulcrumX, bottomPlotBottomY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Triangle Fulcrum
+                    const fulcrumY = topPlotBottomY;
+                    ctx.beginPath();
+                    ctx.fillStyle = '#f5a623';
+                    ctx.moveTo(fulcrumX, fulcrumY);
+                    ctx.lineTo(fulcrumX - 8, fulcrumY + 12);
+                    ctx.lineTo(fulcrumX + 8, fulcrumY + 12);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Std Dev
+                    const std = currentDist.getStdDev();
+                    if (std !== undefined && !isNaN(std)) {
+                        const sigmaY = fulcrumY + 20;
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#f5a623';
+                        ctx.lineWidth = 2;
+                        const startX = xScale(mean - std);
+                        const endX = xScale(mean + std);
+                        ctx.moveTo(startX, sigmaY);
+                        ctx.lineTo(endX, sigmaY);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(startX, sigmaY - 4);
+                        ctx.lineTo(startX, sigmaY + 4);
+                        ctx.moveTo(endX, sigmaY - 4);
+                        ctx.lineTo(endX, sigmaY + 4);
+                        ctx.stroke();
+                    }
+                }
+            } else if (currentMode === 'probability') {
+                // Probability Mode: User selects X, see P(X <= x)
+                let selX = interactionState.selectedX;
+                if (selX === null) selX = (minX + maxX) / 2; // Default
+
+                const xPos = xScale(selX);
+
+                // 1. Draggable Triangle Handle on CDF X-axis
+                const handleY = bottomPlotBottomY;
                 ctx.beginPath();
-                ctx.fillStyle = '#f5a623';
-                ctx.moveTo(fulcrumX, fulcrumY);
-                ctx.lineTo(fulcrumX - 8, fulcrumY + 12);
-                ctx.lineTo(fulcrumX + 8, fulcrumY + 12);
+                ctx.fillStyle = '#4a90e2';
+                ctx.moveTo(xPos, handleY);
+                ctx.lineTo(xPos - 8, handleY + 12);
+                ctx.lineTo(xPos + 8, handleY + 12);
                 ctx.closePath();
                 ctx.fill();
 
-                // Draw Std Dev indicators on Top Plot
-                const std = currentDist.getStdDev();
-                if (std !== undefined && !isNaN(std)) {
-                    const sigmaY = fulcrumY + 20; // Below fulcrum
-
-                    ctx.beginPath();
-                    ctx.strokeStyle = '#f5a623';
-                    ctx.lineWidth = 2;
-                    // Line from mean-std to mean+std
-                    const startX = xScale(mean - std);
-                    const endX = xScale(mean + std);
-
-                    ctx.moveTo(startX, sigmaY);
-                    ctx.lineTo(endX, sigmaY);
-                    ctx.stroke();
-
-                    // Caps for std dev line
-                    ctx.beginPath();
-                    ctx.moveTo(startX, sigmaY - 4);
-                    ctx.lineTo(startX, sigmaY + 4);
-                    ctx.moveTo(endX, sigmaY - 4);
-                    ctx.lineTo(endX, sigmaY + 4);
-                    ctx.stroke();
+                // 2. Vertical Line up to CDF
+                // Find CDF value at selX
+                let cdfVal = 0;
+                // Simple lookup/interp
+                if (currentDist.isContinuous) {
+                    // Find closest point in cdfData
+                    if (cdfData.length > 0) {
+                        // Binary search or simple find
+                        const pt = cdfData.find(p => p.x >= selX);
+                        cdfVal = pt ? pt.p : (selX < cdfData[0].x ? 0 : 1);
+                    }
+                } else {
+                    // Sum probs <= selX
+                    cdfVal = currentDist.data.filter(d => d.x <= selX).reduce((sum, d) => sum + d.p, 0);
                 }
+
+                const cdfY = yScaleCDF(cdfVal);
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#4a90e2';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(xPos, handleY);
+                ctx.lineTo(xPos, cdfY);
+                ctx.stroke();
+
+                // 3. Horizontal Line to Y-axis
+                ctx.beginPath();
+                ctx.moveTo(xPos, cdfY);
+                ctx.lineTo(padding.left, cdfY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 4. Label P(X <= x)
+                ctx.fillStyle = '#4a90e2';
+                ctx.font = 'bold 12px Inter';
+                ctx.textAlign = 'right';
+                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, w - padding.right, bottomPlotTopY - 10);
+
+                // 5. Vertical line on PMF/PDF
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(74, 144, 226, 0.5)';
+                ctx.moveTo(xPos, padding.top);
+                ctx.lineTo(xPos, topPlotBottomY);
+                ctx.stroke();
+
+            } else if (currentMode === 'quantile') {
+                // Quantile Mode: User selects P, see x
+                let selP = interactionState.selectedP;
+                const yPos = yScaleCDF(selP);
+
+                // 1. Draggable Handle on CDF Y-axis
+                ctx.beginPath();
+                ctx.fillStyle = '#e056fd';
+                // Triangle pointing right
+                ctx.moveTo(padding.left, yPos);
+                ctx.lineTo(padding.left - 12, yPos - 6);
+                ctx.lineTo(padding.left - 12, yPos + 6);
+                ctx.closePath();
+                ctx.fill();
+
+                // 2. Horizontal Line to CDF
+                // Find x for p
+                let quantileX = minX;
+                if (currentDist.isContinuous) {
+                    // Find first x where p >= selP
+                    const pt = cdfData.find(d => d.p >= selP);
+                    quantileX = pt ? pt.x : maxX;
+                } else {
+                    // Discrete: first x where sum(p) >= selP
+                    let sum = 0;
+                    let sorted = [...currentDist.data].sort((a, b) => a.x - b.x);
+                    for (let d of sorted) {
+                        sum += d.p;
+                        if (sum >= selP) {
+                            quantileX = d.x;
+                            break;
+                        }
+                    }
+                }
+
+                const xPos = xScale(quantileX);
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#e056fd';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(padding.left, yPos);
+                ctx.lineTo(xPos, yPos);
+                ctx.stroke();
+
+                // 3. Vertical Line down to X-axis
+                ctx.beginPath();
+                ctx.moveTo(xPos, yPos);
+                ctx.lineTo(xPos, bottomPlotBottomY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 4. Label
+                ctx.fillStyle = '#e056fd';
+                ctx.font = 'bold 12px Inter';
+                ctx.textAlign = 'right';
+                ctx.fillText(`F⁻¹(${selP.toFixed(2)}) = ${quantileX.toFixed(2)}`, w - padding.right, bottomPlotTopY - 10);
+
+                // 5. Vertical line on PMF/PDF
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(224, 86, 253, 0.5)';
+                ctx.moveTo(xPos, padding.top);
+                ctx.lineTo(xPos, topPlotBottomY);
+                ctx.stroke();
             }
         }
 
@@ -1115,8 +1302,6 @@
         let dragMode = null; // 'vertical' or 'horizontal'
 
         canvas.addEventListener('mousedown', (e) => {
-            if (!(currentDist instanceof CustomDistribution)) return;
-
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
@@ -1128,49 +1313,69 @@
             const availableH = h - padding.top - padding.bottom - padding.gap;
             const plotH = availableH / 2;
             const plotW = w - padding.left - padding.right;
+            const topPlotBottomY = padding.top + plotH;
+            const bottomPlotTopY = topPlotBottomY + padding.gap;
+            const bottomPlotBottomY = bottomPlotTopY + plotH;
 
-            const maxX = Math.max(...currentDist.data.map(d => d.x)) + 1;
-            const minX = viewState.minX; // Use viewState minX for correct scaling
+            const minX = viewState.minX;
+            const maxX = viewState.maxX;
+            const maxP = viewState.maxP;
 
-            // Reconstruct xScale
-            const xScale = (x) => padding.left + ((x - minX) / (viewState.maxX - minX)) * plotW;
+            const xScale = (x) => padding.left + ((x - minX) / (maxX - minX)) * plotW;
+            const yScaleCDF = (p) => bottomPlotBottomY - p * plotH;
 
-            // Bar width approximation
-            const barWidth = (plotW / (viewState.maxX - minX)) * 0.6;
+            // Check interaction based on mode
+            if (currentMode === 'expectation') {
+                if (currentDist instanceof CustomDistribution) {
+                    // Check bars
+                    const barWidth = (plotW / (maxX - minX)) * 0.6;
+                    const yScalePMF = (p) => topPlotBottomY - (p / maxP) * plotH;
 
-            currentDist.data.forEach((d, i) => {
-                const x = xScale(d.x);
-                // Check if click is within bar bounds
-                // Note: Bars are drawn from topPlotBottomY upwards
-                const topPlotBottomY = padding.top + plotH;
-                const yScalePMF = (p) => topPlotBottomY - (p / viewState.maxP) * plotH;
-                const y = yScalePMF(d.p);
-
-                if (mouseX >= x && mouseX <= x + barWidth && mouseY >= y && mouseY <= topPlotBottomY) {
-                    isDragging = true;
-                    dragIndex = i;
-                    dragStart = { x: mouseX, y: mouseY };
-                    dragMode = null; // Determine on move
+                    currentDist.data.forEach((d, i) => {
+                        const x = xScale(d.x);
+                        const y = yScalePMF(d.p);
+                        if (mouseX >= x && mouseX <= x + barWidth && mouseY >= y && mouseY <= topPlotBottomY) {
+                            isDragging = true;
+                            dragIndex = i;
+                            dragStart = { x: mouseX, y: mouseY };
+                            interactionState.dragTarget = 'bar';
+                            interactionState.isDraggingHandle = false;
+                        }
+                    });
                 }
-            });
+            } else if (currentMode === 'probability') {
+                // Check X-axis handle on CDF
+                let selX = interactionState.selectedX;
+                if (selX === null) selX = (minX + maxX) / 2;
+                const xPos = xScale(selX);
+                const handleY = bottomPlotBottomY;
+
+                // Hit box for triangle
+                if (Math.abs(mouseX - xPos) < 15 && Math.abs(mouseY - handleY) < 20) {
+                    isDragging = true;
+                    interactionState.isDraggingHandle = true;
+                    interactionState.dragTarget = 'x-handle';
+                }
+            } else if (currentMode === 'quantile') {
+                // Check Y-axis handle on CDF
+                let selP = interactionState.selectedP;
+                const yPos = yScaleCDF(selP);
+
+                // Hit box for triangle
+                if (Math.abs(mouseX - padding.left) < 20 && Math.abs(mouseY - yPos) < 15) {
+                    isDragging = true;
+                    interactionState.isDraggingHandle = true;
+                    interactionState.dragTarget = 'y-handle';
+                }
+            }
         });
 
         canvas.addEventListener('mousemove', (e) => {
-            if (!isDragging || dragIndex === -1) return;
-
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            if (!dragMode) {
-                const dx = Math.abs(mouseX - dragStart.x);
-                const dy = Math.abs(mouseY - dragStart.y);
-                if (dx > 5 || dy > 5) {
-                    dragMode = dx > dy ? 'horizontal' : 'vertical';
-                } else {
-                    return; // Wait for significant movement
-                }
-            }
+            if (!isDragging) return;
 
             // Layout constants
             const w = canvas.width;
@@ -1180,41 +1385,63 @@
             const plotH = availableH / 2;
             const plotW = w - padding.left - padding.right;
             const topPlotBottomY = padding.top + plotH;
+            const bottomPlotTopY = topPlotBottomY + padding.gap;
+            const bottomPlotBottomY = bottomPlotTopY + plotH;
 
-            const maxX = viewState.maxX;
             const minX = viewState.minX;
-            const maxP = viewState.maxP; // Use viewState maxP
+            const maxX = viewState.maxX;
+            const maxP = viewState.maxP;
 
-            if (dragMode === 'vertical') {
-                // Inverse of yScalePMF: y = topPlotBottomY - (p / maxP) * plotH
-                // p = (topPlotBottomY - y) / plotH * maxP
-                let newP = (topPlotBottomY - mouseY) / plotH * maxP;
-                newP = Math.max(0, newP);
-                currentDist.data[dragIndex].p = newP;
-                currentDist.normalize();
-            } else if (dragMode === 'horizontal') {
-                // Calculate new X based on mouse position
-                // Inverse of xScale: x = minX + (mouseX - padding.left) / plotW * (maxX - minX)
-                let newX = Math.round(minX + (mouseX - padding.left) / plotW * (maxX - minX));
-                newX = Math.max(0, newX); // No negative x
-
-                // Check if we moved to a new integer X
-                if (newX !== currentDist.data[dragIndex].x) {
-                    // Check collision
-                    const existing = currentDist.data.find((d, i) => i !== dragIndex && d.x === newX);
-                    if (existing) {
-                        // Collision handling: For now, just allow overlap or maybe don't move?
-                        // Let's allow overlap, it will look like one bar on top of another or similar.
-                        // Actually, let's just update x.
-                        currentDist.data[dragIndex].x = newX;
+            if (interactionState.isDraggingHandle) {
+                if (interactionState.dragTarget === 'x-handle') {
+                    // Update selectedX
+                    // Inverse xScale: x = minX + (mouseX - padding.left) / plotW * (maxX - minX)
+                    let newX = minX + (mouseX - padding.left) / plotW * (maxX - minX);
+                    // Clamp
+                    newX = Math.max(minX, Math.min(maxX, newX));
+                    interactionState.selectedX = newX;
+                } else if (interactionState.dragTarget === 'y-handle') {
+                    // Update selectedP
+                    // Inverse yScaleCDF: p = (bottomPlotBottomY - mouseY) / plotH
+                    let newP = (bottomPlotBottomY - mouseY) / plotH;
+                    // Clamp
+                    newP = Math.max(0, Math.min(1, newP));
+                    interactionState.selectedP = newP;
+                }
+                draw();
+            } else if (currentMode === 'expectation' && interactionState.dragTarget === 'bar') {
+                // Existing bar drag logic
+                if (!dragMode) {
+                    const dx = Math.abs(mouseX - dragStart.x);
+                    const dy = Math.abs(mouseY - dragStart.y);
+                    if (dx > 5 || dy > 5) {
+                        dragMode = dx > dy ? 'horizontal' : 'vertical';
                     } else {
-                        currentDist.data[dragIndex].x = newX;
+                        return;
                     }
                 }
-            }
 
-            draw();
-            updateStats();
+                if (dragMode === 'vertical') {
+                    let newP = (topPlotBottomY - mouseY) / plotH * maxP;
+                    newP = Math.max(0, newP);
+                    currentDist.data[dragIndex].p = newP;
+                    currentDist.normalize();
+                } else if (dragMode === 'horizontal') {
+                    let newX = Math.round(minX + (mouseX - padding.left) / plotW * (maxX - minX));
+                    newX = Math.max(0, newX);
+
+                    if (newX !== currentDist.data[dragIndex].x) {
+                        const existing = currentDist.data.find((d, i) => i !== dragIndex && d.x === newX);
+                        if (existing) {
+                            currentDist.data[dragIndex].x = newX;
+                        } else {
+                            currentDist.data[dragIndex].x = newX;
+                        }
+                    }
+                }
+                draw();
+                updateStats();
+            }
         });
 
         window.addEventListener('mouseup', () => {
