@@ -1698,8 +1698,10 @@ mean_val = np.sum(x * p)
                 // 4. Label
                 ctx.fillStyle = '#e056fd';
                 ctx.font = 'bold 12px Inter';
-                ctx.textAlign = 'right';
-                ctx.fillText(`F⁻¹(${selP.toFixed(2)}) = ${quantileX.toFixed(2)}`, w - padding.right, bottomPlotTopY - 10);
+                ctx.textAlign = 'left';
+                // Position label to the right of the vertical dashed line (xPos)
+                // and just above the X-axis (bottomPlotBottomY)
+                ctx.fillText(`F⁻¹(${selP.toFixed(2)}) = ${quantileX.toFixed(2)}`, xPos + 5, bottomPlotBottomY - 10);
 
                 // 5. Vertical line on PMF/PDF
                 ctx.beginPath();
