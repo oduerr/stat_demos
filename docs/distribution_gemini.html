@@ -187,6 +187,15 @@
                                     </span>
                                 </div>
                             </div>
+
+                            <!-- Interval Mode Toggle (Hidden by default) -->
+                            <div id="intervalModeContainer"
+                                style="display: none; margin-bottom: 10px; margin-left: 5px;">
+                                <label
+                                    style="cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.9rem; color: #555;">
+                                    <input type="checkbox" id="intervalModeCheck"> Interval Probability P(a < X < b)
+                                        </label>
+                            </div>
                         </div>
 
                         <div class="control-group">
@@ -817,7 +826,14 @@ sum(x * p)
             if (isDiscrete) {
                 code += `p${funcSuffix}(${Math.floor((minX + maxX) / 2)}, ${callParams}) # P(X <= k)\n`;
             } else {
-                code += `p${funcSuffix}(0, ${callParams}) # CDF at x=0\n`;
+                if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                    const x1 = Math.min(interactionState.selectedX, interactionState.selectedX2);
+                    const x2 = Math.max(interactionState.selectedX, interactionState.selectedX2);
+                    code += `p_interval = p${funcSuffix}(${fmt(x2)}, ${callParams}) - p${funcSuffix}(${fmt(x1)}, ${callParams}) # P(${fmt(x1)} < X < ${fmt(x2)})\n`;
+                } else {
+                    const xVal = interactionState.selectedX !== null ? interactionState.selectedX : 0;
+                    code += `p${funcSuffix}(${fmt(xVal)}, ${callParams}) # CDF at x=${fmt(xVal)}\n`;
+                }
             }
 
             code += `q${funcSuffix}(0.95, ${callParams}) # 95th percentile\n`;
@@ -995,11 +1011,18 @@ mean_val = np.sum(x * p)
             code += `plt.xlabel('x')\n`;
             code += `plt.show()\n\n`;
 
-            // CDF, Quantile, Random
+            // Probabilities
             if (isDiscrete) {
                 code += `dist.cdf(${Math.floor((minX + maxX) / 2)}) # P(X <= k)\n`;
             } else {
-                code += `dist.cdf(0) # CDF at x=0\n`;
+                if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                    const x1 = Math.min(interactionState.selectedX, interactionState.selectedX2);
+                    const x2 = Math.max(interactionState.selectedX, interactionState.selectedX2);
+                    code += `p_interval = dist.cdf(${fmt(x2)}) - dist.cdf(${fmt(x1)}) # P(${fmt(x1)} < X < ${fmt(x2)})\n`;
+                } else {
+                    const xVal = interactionState.selectedX !== null ? interactionState.selectedX : 0;
+                    code += `dist.cdf(${fmt(xVal)}) # CDF at x=${fmt(xVal)}\n`;
+                }
             }
 
             code += `dist.ppf(0.95) # 95th percentile\n`;
@@ -1078,6 +1101,8 @@ mean_val = np.sum(x * p)
         paramsContainer.parentNode.insertBefore(autoZoomContainer, paramsContainer.nextSibling);
 
         const autoZoomCheckbox = document.getElementById('autoZoom');
+        const intervalModeCheck = document.getElementById('intervalModeCheck');
+        const intervalModeContainer = document.getElementById('intervalModeContainer');
 
         // Initial distribution
         let currentDist = new Binomial();
@@ -1086,14 +1111,36 @@ mean_val = np.sum(x * p)
         let currentMode = 'expectation'; // 'expectation', 'probability', 'quantile'
         let interactionState = {
             selectedX: null, // For Probability Mode
+            selectedX2: null, // For Interval Probability Mode
             selectedP: 0.5,  // For Quantile Mode
             isDraggingHandle: false,
-            dragTarget: null // 'x-handle', 'y-handle', 'bar'
+            dragTarget: null, // 'x-handle', 'y-handle', 'bar', 'x-handle-2'
+            isIntervalMode: false
         };
 
         let isDragging = false;
         let dragIndex = -1;
         // dragStart and dragMode are declared later, removing duplicates here.
+
+        function updateIntervalToggleVisibility() {
+            if (currentMode === 'probability' && currentDist.isContinuous) {
+                intervalModeContainer.style.display = 'block';
+            } else {
+                intervalModeContainer.style.display = 'none';
+                interactionState.isIntervalMode = false; // Reset if hidden
+                intervalModeCheck.checked = false;
+            }
+        }
+
+        intervalModeCheck.addEventListener('change', (e) => {
+            interactionState.isIntervalMode = e.target.checked;
+            if (interactionState.isIntervalMode && interactionState.selectedX2 === null) {
+                // Initialize second handle if needed
+                interactionState.selectedX2 = interactionState.selectedX + currentDist.getStdDev();
+            }
+            draw();
+            updateCode();
+        });
 
         // Mode Selection
         document.querySelectorAll('input[name="mode"]').forEach(radio => {
@@ -1102,8 +1149,12 @@ mean_val = np.sum(x * p)
                 // Reset interaction state on mode switch
                 interactionState.selectedX = currentDist.getMean();
                 if (isNaN(interactionState.selectedX)) interactionState.selectedX = (viewState.minX + viewState.maxX) / 2;
+                interactionState.selectedX2 = null;
                 interactionState.selectedP = 0.5;
+
+                updateIntervalToggleVisibility();
                 draw();
+                updateCode();
             });
         });
 
@@ -1310,8 +1361,10 @@ mean_val = np.sum(x * p)
                 median = (ideal.min + ideal.max) / 2;
             }
             interactionState.selectedX = median;
+            interactionState.selectedX2 = null;
             interactionState.selectedP = 0.5;
 
+            updateIntervalToggleVisibility();
             setupParamsUI();
             updateCode(); // Update R code on switch
             draw();
@@ -1455,21 +1508,45 @@ mean_val = np.sum(x * p)
                 ctx.fill();
 
                 // Probability Mode Shading
-                if (currentMode === 'probability' && interactionState.selectedX !== null) {
-                    // Shade area <= selectedX
-                    const idx = currentDist.data.findIndex(d => d.x > interactionState.selectedX);
-                    const endIndex = idx === -1 ? currentDist.data.length - 1 : idx;
+                if (currentMode === 'probability') {
+                    if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                        // Interval Mode: Shade between x1 and x2
+                        const x1 = Math.min(interactionState.selectedX, interactionState.selectedX2);
+                        const x2 = Math.max(interactionState.selectedX, interactionState.selectedX2);
 
-                    if (endIndex > 0) {
-                        ctx.beginPath();
-                        ctx.moveTo(xScale(currentDist.data[0].x), topPlotBottomY);
-                        for (let i = 0; i <= endIndex; i++) {
-                            ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
+                        const idx1 = currentDist.data.findIndex(d => d.x >= x1);
+                        const idx2 = currentDist.data.findIndex(d => d.x >= x2);
+
+                        const startIdx = idx1 === -1 ? 0 : idx1;
+                        const endIdx = idx2 === -1 ? currentDist.data.length - 1 : idx2;
+
+                        if (endIdx > startIdx) {
+                            ctx.beginPath();
+                            ctx.moveTo(xScale(currentDist.data[startIdx].x), topPlotBottomY);
+                            for (let i = startIdx; i <= endIdx; i++) {
+                                ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
+                            }
+                            ctx.lineTo(xScale(currentDist.data[endIdx].x), topPlotBottomY);
+                            ctx.closePath();
+                            ctx.fillStyle = 'rgba(74, 144, 226, 0.5)'; // Darker shade
+                            ctx.fill();
                         }
-                        ctx.lineTo(xScale(currentDist.data[endIndex].x), topPlotBottomY);
-                        ctx.closePath();
-                        ctx.fillStyle = 'rgba(74, 144, 226, 0.5)'; // Darker shade
-                        ctx.fill();
+                    } else if (interactionState.selectedX !== null) {
+                        // Standard Mode: Shade <= selectedX
+                        const idx = currentDist.data.findIndex(d => d.x > interactionState.selectedX);
+                        const endIndex = idx === -1 ? currentDist.data.length - 1 : idx;
+
+                        if (endIndex > 0) {
+                            ctx.beginPath();
+                            ctx.moveTo(xScale(currentDist.data[0].x), topPlotBottomY);
+                            for (let i = 0; i <= endIndex; i++) {
+                                ctx.lineTo(xScale(currentDist.data[i].x), yScalePMF(currentDist.data[i].p));
+                            }
+                            ctx.lineTo(xScale(currentDist.data[endIndex].x), topPlotBottomY);
+                            ctx.closePath();
+                            ctx.fillStyle = 'rgba(74, 144, 226, 0.5)'; // Darker shade
+                            ctx.fill();
+                        }
                     }
                 }
 
@@ -1512,9 +1589,19 @@ mean_val = np.sum(x * p)
                     }
 
                     // Probability Mode Highlighting
-                    if (currentMode === 'probability' && interactionState.selectedX !== null) {
-                        if (d.x <= interactionState.selectedX) {
-                            ctx.fillStyle = '#1e5b9e'; // Much darker/pronounced highlight
+                    if (currentMode === 'probability') {
+                        if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                            // Interval
+                            const x1 = Math.min(interactionState.selectedX, interactionState.selectedX2);
+                            const x2 = Math.max(interactionState.selectedX, interactionState.selectedX2);
+                            if (d.x >= x1 && d.x <= x2) {
+                                ctx.fillStyle = '#1e5b9e';
+                            }
+                        } else if (interactionState.selectedX !== null) {
+                            // Standard
+                            if (d.x <= interactionState.selectedX) {
+                                ctx.fillStyle = '#1e5b9e';
+                            }
                         }
                     }
 
@@ -1680,66 +1767,126 @@ mean_val = np.sum(x * p)
                 let selX = interactionState.selectedX;
                 if (selX === null) selX = (minX + maxX) / 2; // Default
 
-                const xPos = xScale(selX);
+                const drawHandle = (xVal, color) => {
+                    const xPos = xScale(xVal);
+                    const handleY = bottomPlotBottomY;
+                    ctx.beginPath();
+                    ctx.fillStyle = color;
+                    ctx.moveTo(xPos, handleY);
+                    ctx.lineTo(xPos - 8, handleY + 12);
+                    ctx.lineTo(xPos + 8, handleY + 12);
+                    ctx.closePath();
+                    ctx.fill();
+                    return xPos;
+                };
 
-                // 1. Draggable Triangle Handle on CDF X-axis
-                const handleY = bottomPlotBottomY;
-                ctx.beginPath();
-                ctx.fillStyle = '#4a90e2';
-                ctx.moveTo(xPos, handleY);
-                ctx.lineTo(xPos - 8, handleY + 12);
-                ctx.lineTo(xPos + 8, handleY + 12);
-                ctx.closePath();
-                ctx.fill();
-
-                // 2. Vertical Line up to CDF
-                // Find CDF value at selX
-                let cdfVal = 0;
-                // Simple lookup/interp
-                if (currentDist.isContinuous) {
-                    // Find closest point in cdfData
-                    if (cdfData.length > 0) {
-                        // Binary search or simple find
-                        const pt = cdfData.find(p => p.x >= selX);
-                        cdfVal = pt ? pt.p : (selX < cdfData[0].x ? 0 : 1);
+                const getCDF = (xVal) => {
+                    if (currentDist.isContinuous) {
+                        if (cdfData.length > 0) {
+                            const pt = cdfData.find(p => p.x >= xVal);
+                            return pt ? pt.p : (xVal < cdfData[0].x ? 0 : 1);
+                        }
+                        return 0;
+                    } else {
+                        return currentDist.data.filter(d => d.x <= xVal).reduce((sum, d) => sum + d.p, 0);
                     }
+                };
+
+                if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                    // Interval Mode
+                    const x1 = interactionState.selectedX;
+                    const x2 = interactionState.selectedX2;
+                    const minVal = Math.min(x1, x2);
+                    const maxVal = Math.max(x1, x2);
+
+                    const cdf1 = getCDF(minVal);
+                    const cdf2 = getCDF(maxVal);
+                    const prob = cdf2 - cdf1;
+
+                    // Draw Handles
+                    const xPos1 = drawHandle(x1, '#4a90e2');
+                    const xPos2 = drawHandle(x2, '#2a6ebb'); // Slightly different color for distinction? Or same. Let's use same.
+
+                    // Vertical Lines & Horizontal Lines
+                    [minVal, maxVal].forEach((val, idx) => {
+                        const cdfVal = idx === 0 ? cdf1 : cdf2;
+                        const xPos = xScale(val);
+                        const cdfY = yScaleCDF(cdfVal);
+
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#4a90e2';
+                        ctx.lineWidth = 1.5;
+                        ctx.setLineDash([4, 4]);
+                        ctx.moveTo(xPos, bottomPlotBottomY);
+                        ctx.lineTo(xPos, cdfY);
+                        ctx.stroke();
+
+                        // Horizontal to Y
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, cdfY);
+                        ctx.lineTo(padding.left, cdfY);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        // Label CDF value above dashed line
+                        ctx.fillStyle = '#4a90e2';
+                        ctx.font = '11px Inter';
+                        ctx.textAlign = 'left';
+                        ctx.fillText(cdfVal.toFixed(3), padding.left + 5, cdfY - 5);
+
+                        // Vertical on PDF
+                        ctx.beginPath();
+                        ctx.strokeStyle = 'rgba(74, 144, 226, 0.5)';
+                        ctx.moveTo(xPos, padding.top);
+                        ctx.lineTo(xPos, topPlotBottomY);
+                        ctx.stroke();
+                    });
+
+                    // Label
+                    const labelY = yScaleCDF((cdf1 + cdf2) / 2); // Midpoint Y? Or fixed?
+                    // Let's put it near the top handle or in between.
+                    // User requested "above the dashed line" for single mode.
+                    // For interval, maybe: P(a < X < b) = F(b) - F(a) = ...
+                    ctx.fillStyle = '#4a90e2';
+                    ctx.font = 'bold 12px Inter';
+                    ctx.textAlign = 'left';
+                    const midY = (yScaleCDF(cdf1) + yScaleCDF(cdf2)) / 2;
+                    ctx.fillText(`P(${minVal.toFixed(2)} < X < ${maxVal.toFixed(2)}) = ${prob.toFixed(3)}`, padding.left + 10, midY);
+
                 } else {
-                    // Sum probs <= selX
-                    cdfVal = currentDist.data.filter(d => d.x <= selX).reduce((sum, d) => sum + d.p, 0);
+                    // Standard Single Mode
+                    const xPos = drawHandle(selX, '#4a90e2');
+                    const cdfVal = getCDF(selX);
+                    const cdfY = yScaleCDF(cdfVal);
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#4a90e2';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([4, 4]);
+                    ctx.moveTo(xPos, bottomPlotBottomY);
+                    ctx.lineTo(xPos, cdfY);
+                    ctx.stroke();
+
+                    // Horizontal Line to Y-axis
+                    ctx.beginPath();
+                    ctx.moveTo(xPos, cdfY);
+                    ctx.lineTo(padding.left, cdfY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Label P(X <= x)
+                    ctx.fillStyle = '#4a90e2';
+                    ctx.font = 'bold 12px Inter';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, padding.left + 10, cdfY - 10);
+
+                    // Vertical line on PMF/PDF
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(74, 144, 226, 0.5)';
+                    ctx.moveTo(xPos, padding.top);
+                    ctx.lineTo(xPos, topPlotBottomY);
+                    ctx.stroke();
                 }
-
-                const cdfY = yScaleCDF(cdfVal);
-
-                ctx.beginPath();
-                ctx.strokeStyle = '#4a90e2';
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(xPos, handleY);
-                ctx.lineTo(xPos, cdfY);
-                ctx.stroke();
-
-                // 3. Horizontal Line to Y-axis
-                ctx.beginPath();
-                ctx.moveTo(xPos, cdfY);
-                ctx.lineTo(padding.left, cdfY);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                // 4. Label P(X <= x)
-                ctx.fillStyle = '#4a90e2';
-                ctx.font = 'bold 12px Inter';
-                ctx.textAlign = 'left';
-                // Position label near the Y-axis of the CDF plot (bottomPlotTopY area)
-                // User requested: "at the CDF close close to the y-axis in the CDF plot. It should be above the dashed line."
-                // Dashed line is at cdfY.
-                ctx.fillText(`P(X ≤ ${selX.toFixed(2)}) = ${cdfVal.toFixed(3)}`, padding.left + 10, cdfY - 10);
-
-                // 5. Vertical line on PMF/PDF
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(74, 144, 226, 0.5)';
-                ctx.moveTo(xPos, padding.top);
-                ctx.lineTo(xPos, topPlotBottomY);
-                ctx.stroke();
 
             } else if (currentMode === 'quantile') {
                 // Quantile Mode: User selects P, see x
@@ -1870,12 +2017,23 @@ mean_val = np.sum(x * p)
                 const xPos = xScale(selX);
                 const handleY = bottomPlotBottomY;
 
-                // Hit box for triangle
+                // Hit box for handle 1
                 if (Math.abs(mouseX - xPos) < 15 && Math.abs(mouseY - handleY) < 20) {
                     isDragging = true;
                     interactionState.isDraggingHandle = true;
                     interactionState.dragTarget = 'x-handle';
                 }
+
+                // Hit box for handle 2 (Interval Mode)
+                if (interactionState.isIntervalMode && interactionState.selectedX2 !== null) {
+                    const xPos2 = xScale(interactionState.selectedX2);
+                    if (Math.abs(mouseX - xPos2) < 15 && Math.abs(mouseY - handleY) < 20) {
+                        isDragging = true;
+                        interactionState.isDraggingHandle = true;
+                        interactionState.dragTarget = 'x-handle-2';
+                    }
+                }
+
             } else if (currentMode === 'quantile') {
                 // Check Y-axis handle on CDF
                 let selP = interactionState.selectedP;
@@ -1915,20 +2073,22 @@ mean_val = np.sum(x * p)
             if (interactionState.isDraggingHandle) {
                 if (interactionState.dragTarget === 'x-handle') {
                     // Update selectedX
-                    // Inverse xScale: x = minX + (mouseX - padding.left) / plotW * (maxX - minX)
                     let newX = minX + (mouseX - padding.left) / plotW * (maxX - minX);
-                    // Clamp
                     newX = Math.max(minX, Math.min(maxX, newX));
                     interactionState.selectedX = newX;
+                } else if (interactionState.dragTarget === 'x-handle-2') {
+                    // Update selectedX2
+                    let newX = minX + (mouseX - padding.left) / plotW * (maxX - minX);
+                    newX = Math.max(minX, Math.min(maxX, newX));
+                    interactionState.selectedX2 = newX;
                 } else if (interactionState.dragTarget === 'y-handle') {
                     // Update selectedP
-                    // Inverse yScaleCDF: p = (bottomPlotBottomY - mouseY) / plotH
                     let newP = (bottomPlotBottomY - mouseY) / plotH;
-                    // Clamp
                     newP = Math.max(0, Math.min(1, newP));
                     interactionState.selectedP = newP;
                 }
                 draw();
+                updateCode();
             } else if (currentMode === 'expectation' && interactionState.dragTarget === 'bar') {
                 // Existing bar drag logic
                 if (!dragMode) {
