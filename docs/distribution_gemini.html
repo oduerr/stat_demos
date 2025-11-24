@@ -57,6 +57,74 @@
             gap: 10px;
         }
 
+        .control-group input[type="range"] {
+            flex: 1;
+        }
+
+        /* Tooltip Styles */
+        .tooltip-container {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .tooltip-text {
+            visibility: hidden;
+            width: 280px;
+            background-color: #333;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1000;
+            /* High z-index */
+            top: 100%;
+            /* Position below */
+            left: 50%;
+            margin-left: -140px;
+            /* Center */
+            margin-top: 10px;
+            /* Spacing */
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            font-weight: normal;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .tooltip-text::after {
+            content: "";
+            position: absolute;
+            bottom: 100%;
+            /* Arrow at top */
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent transparent #333 transparent;
+        }
+
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .info-icon {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            background: #999;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 14px;
+            font-size: 10px;
+            margin-left: 5px;
+            cursor: help;
+        }
+
         .control-group {
             display: flex;
             flex-direction: column;
@@ -79,15 +147,45 @@
                         <div class="control-group">
                             <label>Mode</label>
                             <div class="mode-selector" style="display: flex; gap: 10px; margin-bottom: 10px;">
-                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                                    <input type="radio" name="mode" value="expectation" checked> Expectation
-                                </label>
-                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                                    <input type="radio" name="mode" value="probability"> Probability (CDF)
-                                </label>
-                                <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
-                                    <input type="radio" name="mode" value="quantile"> Quantiles
-                                </label>
+                                <div class="tooltip-container">
+                                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                        <input type="radio" name="mode" value="expectation" checked> Expectation <span
+                                            class="info-icon">?</span>
+                                    </label>
+                                    <span class="tooltip-text">
+                                        <strong>Expectation</strong><br>
+                                        Shows the expectation (mean) as the center of mass of the distribution, and the
+                                        standard deviation as its spread.<br>
+                                        Move the parameters to see how the balance point and variability change.
+                                    </span>
+                                </div>
+
+                                <div class="tooltip-container">
+                                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                        <input type="radio" name="mode" value="probability"> Probability (CDF) <span
+                                            class="info-icon">?</span>
+                                    </label>
+                                    <span class="tooltip-text">
+                                        <strong>Probability (CDF)</strong><br>
+                                        Shows the probability that the random variable is ≤ x, using the CDF.<br>
+                                        Drag the triangle to pick an x-value.<br>
+                                        <em>Note: For continuous variables, interval probabilities are computed as F(b)
+                                            − F(a).</em>
+                                    </span>
+                                </div>
+
+                                <div class="tooltip-container">
+                                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+                                        <input type="radio" name="mode" value="quantile"> Quantiles <span
+                                            class="info-icon">?</span>
+                                    </label>
+                                    <span class="tooltip-text">
+                                        <strong>Quantiles</strong><br>
+                                        Shows which x-value corresponds to a chosen probability p.<br>
+                                        Drag the probability slider to see the quantile x = F⁻¹(p).<br>
+                                        Useful for medians, percentiles, and thresholds.
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -1899,6 +1997,7 @@ mean_val = np.sum(x * p)
         resizeCanvas();
         setupParamsUI();
         updateStats();
+        updateCode();
 
     </script>
 </body>
