@@ -1,5 +1,7 @@
 # stat_demos
 
+https://oduerr.github.io/stat_demos/ 
+
 This repository contains interactive demos for teaching statistics concepts.
 
 ## Explorative Data Analysis
