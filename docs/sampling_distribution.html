@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sampling Distribution Demo</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstat/1.9.6/jstat.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f9f9f9;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #ddd;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .left-panel {
+            flex: 1;
+            min-width: 260px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .right-panel {
+            flex: 3;
+            min-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--panel-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            padding: 15px;
+            border: 1px solid var(--border-color);
+        }
+
+        .card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            font-size: 0.9em;
+            gap: 5px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .stat-label {
+            color: #777;
+        }
+
+        .stat-val {
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        #parentCanvas {
+            width: 100%;
+            height: 200px;
+            border-bottom: 1px solid #eee;
+            cursor: crosshair;
+            background: #fff;
+        }
+
+        .plot-container {
+            width: 100%;
+            height: 200px;
+        }
+
+        button,
+        select {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        button:hover,
+        select:hover {
+            background: #f0f0f0;
+        }
+
+        button.primary {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+        }
+
+        button.primary:hover {
+            background: #357abd;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+            flex-wrap: wrap;
+        }
+
+        .switch-label {
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Sampling Distribution Simulator</h1>
+
+    <div class="main-container">
+
+        <!-- Sidebar -->
+        <div class="left-panel">
+
+            <div class="card">
+                <h3>Parent Population</h3>
+                <div class="stats-grid" id="parentStats">
+                    <div class="stat-row"><span class="stat-label">Mean:</span><span class="stat-val"
+                            id="pMean">0.00</span></div>
+                    <div class="stat-row"><span class="stat-label">Median:</span><span class="stat-val"
+                            id="pMedian">0.00</span></div>
+                    <div class="stat-row"><span class="stat-label">SD:</span><span class="stat-val" id="pSD">0.00</span>
+                    </div>
+                    <div class="stat-row"><span class="stat-label">Skew:</span><span class="stat-val"
+                            id="pSkew">0.00</span></div>
+                    <div class="stat-row"><span class="stat-label">Kurtosis:</span><span class="stat-val"
+                            id="pKurt">0.00</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Sample Data (n=<span id="dispN">5</span>)</h3>
+                <div class="stats-grid" id="sampleStats">
+                    <div class="stat-row"><span class="stat-label">Mean:</span><span class="stat-val"
+                            id="sMean">--</span></div>
+                    <div class="stat-row"><span class="stat-label">Median:</span><span class="stat-val"
+                            id="sMedian">--</span></div>
+                    <div class="stat-row"><span class="stat-label">SD:</span><span class="stat-val" id="sSD">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Sampling Dist.</h3>
+                <div class="stats-grid" id="distStats">
+                    <div class="stat-row"><span class="stat-label">Reps:</span><span class="stat-val"
+                            id="dReps">0</span></div>
+                    <div class="stat-row"><span class="stat-label">Mean:</span><span class="stat-val"
+                            id="dMean">--</span></div>
+                    <div class="stat-row"><span class="stat-label">Median:</span><span class="stat-val"
+                            id="dMedian">--</span></div>
+                    <div class="stat-row"><span class="stat-label">SD (SE):</span><span class="stat-val"
+                            id="dSD">--</span></div>
+                    <div class="stat-row"><span class="stat-label">Skew:</span><span class="stat-val"
+                            id="dSkew">--</span></div>
+                    <div class="stat-row"><span class="stat-label">Kurtosis:</span><span class="stat-val"
+                            id="dKurt">--</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <button id="clearBtn" style="width: 100%;">Clear / Reset All</button>
+            </div>
+
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+
+            <!-- 1. Parent Population -->
+            <div class="card">
+                <h3>
+                    Parent Population
+                    <div class="control-group" style="font-weight: normal; font-size: 0.8em; margin:0;">
+                        <select id="presetSelect">
+                            <option value="normal">Normal</option>
+                            <option value="uniform">Uniform</option>
+                            <option value="skewed">Skewed</option>
+                            <option value="bimodal">Bimodal</option>
+                            <option value="custom">Custom (Draw)</option>
+                        </select>
+                        <span style="color:#777; font-size: 0.9em;">(Drag to paint)</span>
+                    </div>
+                </h3>
+                <div>
+                    <canvas id="parentCanvas" width="800" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Sample Data -->
+            <div class="card">
+                <h3>
+                    Sample Data
+                    <div class="control-group" style="margin:0;">
+                        <button class="primary" id="animBtn">Animated</button>
+                        <button class="primary" id="sample5Btn">5</button>
+                        <button class="primary" id="sample1000Btn">1,000</button>
+                        <button class="primary" id="sample10000Btn">10,000</button>
+                    </div>
+                </h3>
+                <div class="control-group" style="justify-content: flex-end; margin-top: 5px;">
+                    <label>N = </label>
+                    <select id="nSelect">
+                        <option value="2">2</option>
+                        <option value="5" selected>5</option>
+                        <option value="10">10</option>
+                        <option value="16">16</option>
+                        <option value="20">20</option>
+                        <option value="25">25</option>
+                    </select>
+                </div>
+                <div id="samplePlot" class="plot-container"></div>
+            </div>
+
+            <!-- 3. Sampling Distribution -->
+            <div class="card">
+                <h3>
+                    <span id="samplingDistTitle">Sampling Distribution</span>
+                    <div class="control-group" style="margin:0; font-size: 0.8em;">
+                        <select id="statSelect">
+                            <option value="mean">Mean</option>
+                            <option value="median">Median</option>
+                            <option value="sd">sd (n-1)</option>
+                            <option value="variance">Variance (n-1)</option>
+                            <option value="mad">MAD</option>
+                            <option value="range">Range</option>
+                        </select>
+                    </div>
+                </h3>
+
+                <!-- Plot Options -->
+                <div class="control-group"
+                    style="background:#f4f4f4; padding: 5px 10px; border-radius: 4px; font-size: 0.85em; justify-content: space-between;">
+                    <div style="display:flex; gap: 10px;">
+                        <label class="switch-label"><input type="radio" name="plotType" value="hist" checked>
+                            Histogram</label>
+                        <label class="switch-label"><input type="radio" name="plotType" value="qq"> QQ Plot
+                            (Normal)</label>
+                    </div>
+                    <div style="display:flex; gap: 15px;">
+                        <label class="switch-label"><input type="checkbox" id="fitNormalCheck"> Fit Normal</label>
+                        <label class="switch-label"><input type="checkbox" id="autoScaleCheck" checked> Auto
+                            Scale</label>
+                    </div>
+                </div>
+
+                <div id="samplingDistPlot" class="plot-container"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        const BINS = 33;
+        let parentDist = new Array(BINS).fill(0);
+        let parentRaw = new Array(BINS).fill(10);
+
+        // We store RAW samples to allow Recalculation when Stat Select changes
+        // Limit history to avoid OOM
+        const MAX_HISTORY = 20000;
+        let historySamples = [];
+        let currentStatValues = []; // Cache of the calculated stats for the histogram/qq
+
+        let currentSample = [];
+        let isAnimationRunning = false;
+        let animationSpeed = 150;
+
+        // Constants
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 200;
+
+        // DOM
+        const cvs = document.getElementById('parentCanvas');
+        const ctx = cvs.getContext('2d');
+
+        // --- Init ---
+        function init() {
+            setPreset('normal');
+            drawParentCanvas();
+            initPlots();
+            attachListeners();
+            updateAllStats();
+
+            window.addEventListener('resize', () => {
+                Plotly.Plots.resize('samplePlot');
+                Plotly.Plots.resize('samplingDistPlot');
+            });
+        }
+
+        function setPreset(type) {
+            parentRaw.fill(0);
+            for (let i = 0; i < BINS; i++) {
+                let x = i / (BINS - 1);
+                let val = 0;
+                if (type === 'normal') {
+                    let z = (x - 0.5) / 0.15;
+                    val = Math.exp(-0.5 * z * z);
+                } else if (type === 'uniform') {
+                    val = (i > 2 && i < 30) ? 1 : 0;
+                } else if (type === 'skewed') {
+                    val = Math.pow(x, 1.5) * Math.exp(-6 * x);
+                } else if (type === 'bimodal') {
+                    let z1 = (x - 0.25) / 0.1;
+                    let z2 = (x - 0.75) / 0.1;
+                    val = 0.6 * Math.exp(-0.5 * z1 * z1) + 0.4 * Math.exp(-0.5 * z2 * z2);
+                } else {
+                    val = 0.5;
+                }
+                parentRaw[i] = Math.max(0.01, val * 100);
+            }
+            normalizeParent();
+            resetSim();
+        }
+
+        function resetSim() {
+            historySamples = [];
+            currentStatValues = [];
+            currentSample = [];
+            updateAllStats();
+            updatePlots();
+        }
+
+        // Called when only Statistic changes (preserve data)
+        function recalculateStats() {
+            currentStatValues = historySamples.map(sample => calculateStatistic(sample));
+            updateAllStats();
+            updatePlots();
+        }
+
+        function normalizeParent() {
+            const sum = parentRaw.reduce((a, b) => a + b, 0);
+            parentDist = parentRaw.map(v => v / sum);
+            drawParentCanvas();
+            updateParentStats();
+        }
+
+        // --- Canvas ---
+        let isDrawing = false;
+        function drawParentCanvas(highlightIdx = -1) {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const barWidth = CANVAS_WIDTH / BINS;
+            const maxVal = Math.max(...parentRaw) || 1;
+
+            for (let i = 0; i < BINS; i++) {
+                const h = (parentRaw[i] / maxVal) * (CANVAS_HEIGHT - 30);
+                const x = i * barWidth;
+                const y = CANVAS_HEIGHT - 20 - h;
+
+                ctx.fillStyle = (i === highlightIdx) ? '#e74c3c' : '#333';
+                ctx.fillRect(x, y, barWidth, h);
+                ctx.strokeStyle = '#fff';
+                ctx.strokeRect(x, y, barWidth, h);
+            }
+
+            // Axis
+            ctx.beginPath();
+            ctx.moveTo(0, CANVAS_HEIGHT - 20);
+            ctx.lineTo(CANVAS_WIDTH, CANVAS_HEIGHT - 20);
+            ctx.strokeStyle = '#000';
+            ctx.stroke();
+
+            ctx.fillStyle = '#666';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            for (let i = 0; i < BINS; i += 4) {
+                const x = i * barWidth + barWidth / 2;
+                ctx.beginPath();
+                ctx.moveTo(x, CANVAS_HEIGHT - 20);
+                ctx.lineTo(x, CANVAS_HEIGHT - 15);
+                ctx.stroke();
+                ctx.fillText(i, x, CANVAS_HEIGHT - 5);
+            }
+        }
+
+        function handleMouse(e) {
+            if (!isDrawing && e.type !== 'mousedown') return;
+            const rect = cvs.getBoundingClientRect();
+            const scaleX = CANVAS_WIDTH / rect.width;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * (CANVAS_HEIGHT / rect.height);
+
+            if (x < 0 || x > CANVAS_WIDTH) return;
+
+            const binIdx = Math.floor(x / (CANVAS_WIDTH / BINS));
+            if (binIdx >= 0 && binIdx < BINS) {
+                const h = Math.max(0, CANVAS_HEIGHT - 20 - y);
+                parentRaw[binIdx] = h;
+                normalizeParent();
+            }
+        }
+        cvs.addEventListener('mousedown', e => { isDrawing = true; handleMouse(e); });
+        window.addEventListener('mouseup', () => { isDrawing = false; });
+        cvs.addEventListener('mousemove', handleMouse);
+
+        // --- Sampling ---
+        function getSampleSize() { return parseInt(document.getElementById('nSelect').value); }
+
+        function sampleOneValue() {
+            let r = Math.random();
+            let sum = 0;
+            for (let i = 0; i < BINS; i++) {
+                sum += parentDist[i];
+                if (r <= sum) return i;
+            }
+            return BINS - 1;
+        }
+
+        function calculateStatistic(vals) {
+            const stats = calcArrStats(vals);
+            const type = document.getElementById('statSelect').value;
+
+            switch (type) {
+                case 'mean': return stats.mean;
+                case 'median': return stats.median;
+                case 'sd': return stats.sd;
+                case 'variance': return stats.variance;
+                case 'mad':
+                    let mean = stats.mean;
+                    return vals.reduce((s, v) => s + Math.abs(v - mean), 0) / vals.length;
+                case 'range': return stats.max - stats.min;
+                default: return stats.mean;
+            }
+        }
+
+        async function runSimulation(reps, animated = false) {
+            if (isAnimationRunning) return;
+            const N = getSampleSize();
+
+            if (animated) {
+                isAnimationRunning = true;
+                currentSample = [];
+                updateSamplePlot([]);
+
+                for (let i = 0; i < N; i++) {
+                    const val = sampleOneValue();
+                    drawParentCanvas(val);
+                    await new Promise(r => setTimeout(r, animationSpeed));
+                    currentSample.push(val);
+                    updateSamplePlot(currentSample);
+                    drawParentCanvas(-1);
+                    await new Promise(r => setTimeout(r, 20)); // brief flash
+                }
+
+                // Save
+                if (historySamples.length < MAX_HISTORY) {
+                    historySamples.push([...currentSample]);
+                    currentStatValues.push(calculateStatistic(currentSample));
+                }
+
+                updateAllStats();
+                updatePlots();
+                isAnimationRunning = false;
+            } else {
+                // Batch
+                const CHUNK_SIZE = 500;
+                let done = 0;
+                let lastSamp = [];
+
+                while (done < reps && historySamples.length < MAX_HISTORY) {
+                    const batch = Math.min(reps - done, CHUNK_SIZE);
+                    // Check capacity
+                    if (historySamples.length + batch > MAX_HISTORY) {
+                        // Truncate remainder
+                        break;
+                    }
+
+                    for (let k = 0; k < batch; k++) {
+                        const s = [];
+                        for (let j = 0; j < N; j++) s.push(sampleOneValue());
+                        historySamples.push(s);
+                        currentStatValues.push(calculateStatistic(s));
+                        if (k === batch - 1) lastSamp = s;
+                    }
+                    done += batch;
+                    currentSample = lastSamp;
+                }
+                updateAllStats();
+                updatePlots();
+            }
+        }
+
+        // --- Plotly ---
+        function initPlots() {
+            const commonLayout = {
+                margin: { t: 20, b: 30, l: 40, r: 10 },
+                xaxis: { range: [-0.5, 32.5], showgrid: false },
+                yaxis: { showgrid: true },
+                height: 160,
+                showlegend: false
+            };
+            Plotly.newPlot('samplePlot', [{
+                x: [], type: 'histogram', marker: { color: '#4a90e2' }
+            }], { ...commonLayout, height: 160 }, { displayModeBar: false });
+
+            Plotly.newPlot('samplingDistPlot', [{
+                x: [], type: 'histogram', marker: { color: 'blue' }
+            }], { ...commonLayout, height: 200 }, { displayModeBar: false });
+        }
+
+        function updateSamplePlot(data) {
+            const s = calcArrStats(data);
+            const shapes = (data.length > 0) ? getRefLines(s.mean, s.median) : [];
+
+            const traces = [
+                // Histogram
+                {
+                    x: data,
+                    type: 'histogram',
+                    autobinx: false,
+                    xbins: { start: -0.5, end: 32.5, size: 1 },
+                    marker: { color: '#ccc', line: { color: '#333', width: 1 } },
+                    name: 'Histogram'
+                },
+                // Rug Plot (Individual Points)
+                {
+                    x: data,
+                    y: data.map(() => 0), // Plot on x-axis line
+                    type: 'scatter',
+                    mode: 'markers',
+                    marker: { symbol: 'line-ns-open', size: 20, color: 'rgba(0,0,0,0.7)', line: { width: 2 } },
+                    hoverinfo: 'x',
+                    name: 'Raw Data'
+                }
+            ];
+
+            Plotly.react('samplePlot', traces, {
+                margin: { t: 20, b: 30, l: 40, r: 10 },
+                xaxis: { range: [-0.5, 32.5], showgrid: false, zeroline: false },
+                yaxis: { showgrid: true, zeroline: false, autorange: true }, // Force auto range
+                height: 160,
+                shapes: shapes,
+                bargap: 0.05,
+                showlegend: false
+            }, { displayModeBar: false });
+        }
+
+        function updateSamplingDistPlot() {
+            const fitNormal = document.getElementById('fitNormalCheck').checked;
+            const autoScale = document.getElementById('autoScaleCheck').checked;
+            const plotType = document.querySelector('input[name="plotType"]:checked').value;
+            const statType = document.getElementById('statSelect').value;
+
+            const layout = {
+                margin: { t: 20, b: 30, l: 50, r: 10 },
+                xaxis: { title: statType },
+                yaxis: { title: 'Frequency' },
+                height: 200,
+                showlegend: false
+            };
+
+            // X-Axis Scaling
+            if (autoScale) {
+                layout.xaxis.autorange = true;
+            } else {
+                layout.xaxis.range = [-0.5, 32.5];
+            }
+
+            const traces = [];
+
+            if (plotType === 'hist') {
+                traces.push({
+                    x: currentStatValues.slice(), // Slice to trigger reactivity
+                    type: 'histogram',
+                    marker: { color: '#4a90e2', line: { color: '#fff', width: 0.5 } },
+                    name: 'Stat'
+                });
+
+                // Add Reference Lines (Mean/Median of the Sampling Dist)
+                if (currentStatValues.length > 0) {
+                    const s = calcArrStats(currentStatValues);
+                    layout.shapes = getRefLines(s.mean, s.median);
+                }
+
+                // Normal Fit Overlay
+                if (fitNormal && currentStatValues.length > 5) {
+                    const s = calcArrStats(currentStatValues);
+                    traces[0].histnorm = 'probability density';
+                    layout.yaxis.title = 'Density';
+
+                    const xs = [];
+                    const ys = [];
+                    let min = (autoScale ? s.min : -0.5);
+                    let max = (autoScale ? s.max : 32.5);
+                    // Ensure reasonable range for curve calc
+                    if (autoScale) { min = s.mean - 4 * s.sd; max = s.mean + 4 * s.sd; }
+
+                    const span = max - min;
+                    for (let i = 0; i <= 100; i++) {
+                        let val = min + (i / 100) * span;
+                        let pdf = jStat.normal.pdf(val, s.mean, s.sd);
+                        xs.push(val);
+                        ys.push(pdf);
+                    }
+                    traces.push({
+                        x: xs, y: ys, type: 'scatter', mode: 'lines',
+                        line: { color: 'black', width: 2 }, name: 'Normal Fit'
+                    });
+                }
+            }
+            else if (plotType === 'qq') {
+                // QQ Plot vs Normal
+                layout.xaxis.title = 'Theoretical Quantiles (Normal)';
+                layout.yaxis.title = 'Observed Quantiles';
+                layout.xaxis.autorange = true; // QQ plot always needs auto range on X
+
+                if (currentStatValues.length > 1) {
+                    const sorted = [...currentStatValues].sort((a, b) => a - b);
+                    const n = sorted.length;
+                    const stats = calcArrStats(sorted);
+
+                    // Generate theoretical Z
+                    const xs = [];
+                    const ys = sorted;
+                    for (let i = 0; i < n; i++) {
+                        let p = (i + 0.5) / n;
+                        // use jStat for inv normal
+                        xs.push(jStat.normal.inv(p, stats.mean, stats.sd));
+                    }
+
+                    traces.push({
+                        x: xs, y: ys,
+                        type: 'scatter', mode: 'markers',
+                        marker: { size: 3, color: '#4a90e2' },
+                        name: 'Data'
+                    });
+
+                    // Reference Line (y = x)
+                    const minVal = Math.min(...xs);
+                    const maxVal = Math.max(...xs);
+                    traces.push({
+                        x: [minVal, maxVal], y: [minVal, maxVal],
+                        type: 'scatter', mode: 'lines',
+                        line: { color: 'red', dash: 'dash' },
+                        name: 'Ref'
+                    });
+                }
+            }
+
+            Plotly.react('samplingDistPlot', traces, layout, { displayModeBar: false });
+
+            // Title
+            const labels = { 'mean': 'Mean', 'median': 'Median', 'sd': 'SD', 'variance': 'Variance', 'mad': 'MAD', 'range': 'Range' };
+            document.getElementById('samplingDistTitle').textContent = `Sampling Distribution of ${labels[statType] || 'Mean'}`;
+        }
+
+        function updatePlots() {
+            updateSamplePlot(currentSample);
+            updateSamplingDistPlot();
+        }
+
+        // --- Stats Utils ---
+        function calcArrStats(arr) {
+            if (!arr || arr.length === 0) return { mean: 0, median: 0, sd: 0, variance: 0, min: 0, max: 0, skew: 0, kurt: 0 };
+            const n = arr.length;
+            const sum = arr.reduce((a, b) => a + b, 0);
+            const mean = sum / n;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const median = (n % 2 === 0) ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[(n - 1) / 2];
+            const min = sorted[0];
+            const max = sorted[n - 1];
+            const sumSq = arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
+            const variance = (n > 1) ? sumSq / (n - 1) : 0;
+            const sd = Math.sqrt(variance);
+
+            const m2 = sumSq / n;
+            const m3 = arr.reduce((a, b) => a + Math.pow(b - mean, 3), 0) / n;
+            const m4 = arr.reduce((a, b) => a + Math.pow(b - mean, 4), 0) / n;
+            const skew = (Math.pow(m2, 1.5) > 1e-9) ? m3 / Math.pow(m2, 1.5) : 0;
+            const kurt = (m2 * m2 > 1e-9) ? m4 / (m2 * m2) - 3 : 0;
+            return { mean, median, sd, variance, min, max, skew, kurt };
+        }
+
+        function getRefLines(mean, median) {
+            const lines = [];
+            if (mean !== undefined) lines.push({ type: 'line', x0: mean, x1: mean, y0: 0, y1: 1, yref: 'paper', line: { color: 'blue', width: 2 } });
+            if (median !== undefined) lines.push({ type: 'line', x0: median, x1: median, y0: 0, y1: 1, yref: 'paper', line: { color: '#e91e63', width: 2, dash: 'dash' } });
+            return lines;
+        }
+
+        function updateStatisticDisplay(idPrefix, stats) {
+            const elMean = document.getElementById(idPrefix + 'Mean');
+            if (elMean) { elMean.textContent = stats.mean.toFixed(2); elMean.style.color = 'blue'; }
+            const elMed = document.getElementById(idPrefix + 'Median');
+            if (elMed) { elMed.textContent = stats.median.toFixed(2); elMed.style.color = '#e91e63'; }
+            if (document.getElementById(idPrefix + 'SD')) document.getElementById(idPrefix + 'SD').textContent = stats.sd.toFixed(2);
+            if (document.getElementById(idPrefix + 'Skew')) document.getElementById(idPrefix + 'Skew').textContent = stats.skew.toFixed(2);
+            if (document.getElementById(idPrefix + 'Kurt')) document.getElementById(idPrefix + 'Kurt').textContent = stats.kurt.toFixed(2);
+        }
+
+        function updateParentStats() {
+            let mean = 0;
+            for (let i = 0; i < BINS; i++) mean += i * parentDist[i];
+            let varP = 0, m3 = 0, m4 = 0;
+            for (let i = 0; i < BINS; i++) {
+                let d = i - mean;
+                let prob = parentDist[i];
+                varP += prob * d * d;
+                m3 += prob * d * d * d;
+                m4 += prob * d * d * d * d;
+            }
+            let sd = Math.sqrt(varP);
+            let skew = (sd > 0) ? m3 / Math.pow(sd, 3) : 0;
+            let kurt = (sd > 0) ? m4 / Math.pow(sd, 4) - 3 : 0;
+            let cdf = 0, med = 0;
+            for (let i = 0; i < BINS; i++) {
+                cdf += parentDist[i];
+                if (cdf >= 0.5) { med = i; break; }
+            }
+            updateStatisticDisplay('p', { mean, median: med, sd, skew, kurt });
+        }
+
+        function updateAllStats() {
+            updateParentStats();
+            document.getElementById('dispN').textContent = getSampleSize();
+            if (currentSample.length) updateStatisticDisplay('s', calcArrStats(currentSample));
+            if (currentStatValues.length) {
+                updateStatisticDisplay('d', calcArrStats(currentStatValues));
+                document.getElementById('dReps').textContent = currentStatValues.length;
+            } else {
+                // reset display
+                updateStatisticDisplay('d', { mean: 0, median: 0, sd: 0, skew: 0, kurt: 0 });
+                document.getElementById('dReps').textContent = "0";
+            }
+        }
+
+        // --- Event Listeners ---
+        function attachListeners() {
+            document.getElementById('clearBtn').addEventListener('click', resetSim);
+            document.getElementById('presetSelect').addEventListener('change', (e) => setPreset(e.target.value));
+            document.getElementById('nSelect').addEventListener('change', resetSim);
+
+            document.getElementById('statSelect').addEventListener('change', recalculateStats);
+            document.querySelectorAll('input[name="plotType"]').forEach(el => el.addEventListener('change', updateSamplingDistPlot));
+            document.getElementById('fitNormalCheck').addEventListener('change', updateSamplingDistPlot);
+            document.getElementById('autoScaleCheck').addEventListener('change', updateSamplingDistPlot);
+
+            document.getElementById('animBtn').addEventListener('click', () => runSimulation(1, true));
+            document.getElementById('sample5Btn').addEventListener('click', () => runSimulation(5, false));
+            document.getElementById('sample1000Btn').addEventListener('click', () => runSimulation(1000, false));
+            document.getElementById('sample10000Btn').addEventListener('click', () => runSimulation(10000, false));
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
