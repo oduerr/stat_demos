@@ -2,133 +2,186 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>STAT Demos — Index</title>
-  <link rel="stylesheet" href="./shared/demo-shell.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STAT Demos — Interactive Applets</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Internal:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap"
+    rel="stylesheet">
   <style>
-    .list {
-      display: grid;
-      gap: 14px;
+    body {
+      font-family: 'Lora', 'Times New Roman', serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background-color: #ffffff;
     }
 
-    .link-row {
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      margin: 0;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      color: #555;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+
+    section {
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+      font-family: 'Internal', sans-serif;
+      /* Sans serif for headers usually looks clean */
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      color: #333;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 0.75rem;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
+      align-items: baseline;
+      gap: 1rem;
     }
 
-    .link-row a {
-      color: #bfdbfe;
-      font-weight: 700;
+    a {
+      color: #0066cc;
       text-decoration: none;
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+
+    a:hover {
+      text-decoration: underline;
     }
 
     .desc {
-      color: var(--muted);
-      font-size: 13px;
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 600px) {
+      li {
+        flex-direction: column;
+        gap: 0.2rem;
+      }
     }
   </style>
 </head>
 
 <body>
+
   <header>
-    <div class="title">STAT Demos — Interactive Applets</div>
-    <div class="subtitle">Browse the interactive teaching demos</div>
+    <h1>STAT Demos</h1>
+    <div class="subtitle">Interactive Teaching Applets for Statistics, Machine Learning, and Deep Learning</div>
+
   </header>
+
   <main>
-    <div class="grid">
-      <section class="card" aria-label="Explorative data analysis">
-        <div class="card-header">
-          <div class="card-title">Explorative Data Analysis</div>
-        </div>
-        <div class="card-body">
-          <div class="list">
-            <div class="link-row">
-              <a href="./korrelation.html">Korrelationen</a>
-              <span class="desc">Thanks to Jannis Bechtold</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card" aria-label="Distributions">
-        <div class="card-header">
-          <div class="card-title">Distributions</div>
-        </div>
-        <div class="card-body">
-          <div class="list">
-            <div class="link-row">
-              <a href="./interactive_distributions.html">Distributions (interactive)</a>
-              <span class="desc">thanks to Georgios Gerontidis</span>
-            </div>
-            <div class="link-row">
-              <a href="./distributions.html">Distributions (second version)</a>
-              <span class="desc">Jannis Bechtold</span>
-            </div>
-            <div class="link-row">
-              <a href="./distribution_gemini.html">Center of Mass, CDF, and Quantiles</a>
-              <span class="desc">Gemini Demo</span>
-            </div>
-            <div class="link-row">
-              <a href="./normal_mle.html">Normal Distribution (μ, σ)</a>
-              <span class="desc">MLE for Normal Distribution</span>
-            </div>
-            <div class="link-row">
-              <a href="./sampling_distribution.html">Sampling Distribution Simulator</a>
-              <span class="desc">Interactive Sampling & Statistics</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card" aria-label="Regression">
-        <div class="card-header">
-          <div class="card-title">Regression</div>
-          <span class="desc">Using Maximum Likelihood Estimation</span>
-        </div>
-        <div class="card-body">
-          <div class="list">
-            <div class="link-row">
-              <a href="./linear_regression_nn.html">Linear Regression</a>
-              <span class="desc">MSE and MLE</span>
-            </div>
-            <div class="list">
-              <div class="link-row">
-                <a href="./logistic_regression.html">Logistic Regression (Challenger) MaxLike</a>
-                <span class="desc">MLE with log loss</span>
-              </div>
-              <div class="link-row">
-                <a href="./poisson_nb_regression.html">Count Regression: Poisson & NegBin MaxLike</a>
-                <span class="desc">MLE with Poisson/NB</span>
-              </div>
-            </div>
-          </div>
-      </section>
-
-    </div>
+    <section>
+      <h2>Explorative Data Analysis</h2>
+      <ul>
+        <li>
+          <a href="./korrelation.html">Korrelationen</a>
+          <span class="desc">Interactive correlation visualization</span>
+          <span class="desc">(Thanks to Jannis Bechtold)</span>
+        </li>
+      </ul>
     </section>
 
-    <section class="card" aria-label="Normalizing flows">
-      <div class="card-header">
-        <div class="card-title">Normalizing Flows</div>
-      </div>
-      <div class="card-body">
-        <div class="list">
-          <div class="link-row">
-            <a href="./bernstein_polynomials.html">Bernstein Polynomials</a>
-          </div>
-          <div class="link-row">
-            <a href="./bernstein_max_likelihood.html">NF Bernstein Polynomials (MaxLike) fitting</a>
-          </div>
-        </div>
-      </div>
+    <section>
+      <h2>Distributions</h2>
+      <ul>
+        <li>
+          <a href="./interactive_distributions.html">Distributions (Interactive)</a>
+          <span class="desc">Explore parameters</span>
+          <span class="desc">(Thanks to Georgios Gerontidis)</span>
+        </li>
+        <li>
+          <a href="./distributions.html">Distributions (Alternate)</a>
+          <span class="desc">(Jannis Bechtold)</span>
+        </li>
+        <li>
+          <a href="./distribution_gemini.html">Center of Mass, CDF, and Quantiles</a>
+          <span class="desc">Physical interpretation of expectation</span>
+        </li>
+        <li>
+          <a href="./normal_mle.html">Normal Distribution (μ, σ)</a>
+          <span class="desc">Maximum Likelihood Estimation</span>
+        </li>
+        <li>
+          <a href="./sampling_distribution.html">Sampling Distribution Simulator</a>
+          <span class="desc">Law of Large Numbers & CLT</span>
+        </li>
+      </ul>
     </section>
 
 
+    <section>
+      <h2>Regression (MLE)</h2>
+      <ul>
+        <li>
+          <a href="./linear_regression_nn.html">Linear Regression</a>
+          <span class="desc">MSE and MLE perspectives</span>
+        </li>
+        <li>
+          <a href="./logistic_regression.html">Logistic Regression</a>
+          <span class="desc">Challenger Dataset (Log Loss)</span>
+        </li>
+        <li>
+          <a href="./poisson_nb_regression.html">Count Regression</a>
+          <span class="desc">Poisson & Negative Binomial</span>
+        </li>
+      </ul>
+    </section>
 
-    </div>
+    <section>
+      <h2>Inference & Evaluation</h2>
+      <ul>
+        <li>
+          <a href="./scoring_rules.html">Proper Scoring Rules</a>
+          <span class="desc">Understanding strictly proper vs improper rules (NLL, CRPS)</span>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Normalizing Flows</h2>
+      <ul>
+        <li>
+          <a href="./bernstein_polynomials.html">Bernstein Polynomials</a>
+          <span class="desc">Basis functions visualization</span>
+        </li>
+        <li>
+          <a href="./bernstein_max_likelihood.html">NF Bernstein Fitting</a>
+          <span class="desc">Fitting distributions via Maximum Likelihood</span>
+        </li>
+      </ul>
+    </section>
+
   </main>
 </body>
 
