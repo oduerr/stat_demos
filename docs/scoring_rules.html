@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proper Scoring Rules</title>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- MathJax -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --border-color: #334155;
+            --success-color: #22c55e;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            width: 100%;
+            padding: 1.5rem 0;
+            text-align: center;
+            background: linear-gradient(to bottom, #1e293b00, var(--bg-color));
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 600;
+            color: var(--accent-color);
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            margin-top: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1200px;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            padding: 0 1rem;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 900px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Panels */
+        .panel {
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-color);
+            height: fit-content;
+        }
+
+        .controls-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .plot-panel {
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .footer-panel {
+            grid-column: 1 / -1;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        /* Controls */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        select {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #334155;
+            color: white;
+            border: 1px solid #475569;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.95rem;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        /* Sliders */
+        .slider-container {
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-value {
+            font-family: monospace;
+            color: var(--accent-color);
+            font-size: 0.9rem;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            border: 2px solid #1e293b;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #475569;
+            border-radius: 2px;
+        }
+
+        input[type="range"]:focus::-webkit-slider-thumb {
+            background: var(--accent-hover);
+        }
+
+        /* Buttons */
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        button {
+            padding: 0.75rem;
+            background-color: #334155;
+            color: white;
+            border: 1px solid #475569;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: #475569;
+            border-color: var(--accent-color);
+        }
+
+        button.primary {
+            background-color: var(--accent-color);
+            color: #0f172a;
+            border: none;
+        }
+
+        button.primary:hover {
+            background-color: var(--accent-hover);
+        }
+
+        /* Score Panel */
+        .score-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 0.5rem;
+            background: #0f172a;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .score-item {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .score-label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .score-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .score-gap {
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            margin-top: 0.25rem;
+            display: inline-block;
+        }
+
+        .gap-positive {
+            color: var(--success-color);
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .gap-negative {
+            color: var(--danger-color);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .gap-neutral {
+            color: #94a3b8;
+        }
+
+        /* Explanation Box */
+        .info-box {
+            background: rgba(56, 189, 248, 0.1);
+            border-left: 4px solid var(--accent-color);
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #e2e8f0;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .tag-proper {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success-color);
+            border: 1px solid var(--success-color);
+        }
+
+        .tag-improper {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger-color);
+            border: 1px solid var(--danger-color);
+        }
+
+        .footer-note {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .footer-note p {
+            margin: 0.4rem 0;
+        }
+
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>Proper Scoring Rules</h1>
+        <div class="subtitle">Proper rules incentivize honesty. Improper rules can be gamed.</div>
+    </header>
+
+    <div class="container">
+
+        <!-- Controls Panel (Left) -->
+        <div class="panel controls-panel">
+
+            <!-- 1. True Distribution -->
+            <div class="control-group">
+                <label>1. True Distribution \(g(y)\)</label>
+                <select id="dist-select">
+                    <option value="normal">Standard Normal</option>
+                    <option value="mixture">Bimodal Mixture</option>
+                    <option value="skewed">Skewed Distribution</option>
+                    <option value="heavy">Heavy-tailed (t-dist)</option>
+                    <option value="triangular">Right Triangular</option>
+                    <option value="sym_triangular">Symmetric Triangular (0, 2)</option>
+                </select>
+            </div>
+
+            <!-- 1b. Sample Size -->
+            <div class="control-group">
+                <label>Estimation Sample Size</label>
+                <select id="sample-select">
+                    <option value="theoretical">Theoretical (Integration)</option>
+                    <option value="10">N = 10</option>
+                    <option value="25">N = 25</option>
+                    <option value="100">N = 100</option>
+                    <option value="500">N = 500</option>
+                </select>
+            </div>
+
+            <!-- 2. Predictive Distribution -->
+            <div class="control-group">
+                <label>2. Predictive Model \(p(y) = \mathcal{N}(y; \mu, \sigma)\)</label>
+
+                <div class="slider-container">
+                    <div class="slider-header">
+                        <span>Mean \(\mu_p\)</span>
+                        <span class="slider-value" id="val-mu">0.00</span>
+                    </div>
+                    <input type="range" id="slider-mu" min="-4" max="4" step="0.05" value="0.5">
+                </div>
+
+                <div class="slider-container">
+                    <div class="slider-header">
+                        <span>Std Dev \(\sigma_p\)</span>
+                        <span class="slider-value" id="val-sigma">1.00</span>
+                    </div>
+                    <input type="range" id="slider-sigma" min="0.001" max="3" step="0.001" value="1.0">
+                </div>
+            </div>
+
+            <!-- 3. Scoring Rule -->
+            <div class="control-group">
+                <label>3. Scoring Rule \(S(p, y)\)</label>
+                <select id="rule-select">
+                    <option value="nll">Neg. Log Likelihood (NLL)</option>
+                    <option value="crps">CRPS</option>
+                    <option value="linear">Linear Score (Improper)</option>
+                </select>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button onclick="app.reset()">Reset</button>
+                <button class="primary" onclick="app.reportTruth()">Make Good Guess</button>
+            </div>
+        </div>
+
+        <!-- Visualization Panel (Right) -->
+        <div class="panel plot-panel">
+            <!-- Score Board -->
+            <div class="score-board">
+                <div class="score-item">
+                    <span class="score-label">Baseline Loss \(\mathbb{E}_g[S(g)]\)</span>
+                    <span class="score-value" id="score-baseline">--</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">Your Loss \(\mathbb{E}_g[S(p)]\)</span>
+                    <span class="score-value" id="score-current" style="color: white;">--</span>
+                </div>
+                <div class="score-item">
+                    <span class="score-label">Regret (Gap) \(\Delta\)</span>
+                    <div id="score-gap-container">
+                        <span class="score-value" id="score-gap">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="main-plot" style="width: 100%; flex-grow: 1;"></div>
+
+            <div class="info-box" id="rule-description">
+                <!-- Dynamic Description -->
+            </div>
+        </div>
+
+        <!-- Footer / Info Panel -->
+        <div class="panel footer-panel">
+            <p><strong>Strictly Proper:</strong> Minimized uniquely when \(p = g\).</p>
+            <p><strong>Improper:</strong> Can be minimized by \(p \neq g\).</p>
+
+            <div class="footer-note">
+                <p>⚠️ <strong>Disclaimer:</strong> This is a vibe-coded program and not all results are checked. Code to
+                    check logic is available in <a
+                        href="https://github.com/oduerr/stat_demos/blob/main/docs/scoring_rules.py"
+                        target="_blank">scoring_rules.py</a>.</p>
+                <p>ℹ️ <strong>Note:</strong> CRPS calculations involve numerical integration and may be slower. The
+                    program might feel slightly unresponsive during these calculations.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Math Engine ---
+
+        const MathUtils = {
+            // Standard Normal PDF
+            pdfNormal: (x, mu, sigma) => {
+                return (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2));
+            },
+
+            // Standard Normal CDF
+            cdfNormal: (x, mu, sigma) => {
+                const z = (x - mu) / sigma;
+                return 0.5 * (1 + Erf.erf(z / Math.sqrt(2)));
+            },
+
+            // Skew Normal PDF
+            pdfSkew: (x, xi, omega, alpha) => {
+                const z = (x - xi) / omega;
+                const normPart = MathUtils.pdfNormal(z, 0, 1);
+                const cdfPart = MathUtils.cdfNormal(alpha * z, 0, 1);
+                return (2 / omega) * normPart * cdfPart;
+            },
+
+            // Student-t PDF
+            pdfStudent: (x, nu) => {
+                // nu=3 approx
+                const factor = 0.36755;
+                return factor * Math.pow(1 + (x * x) / nu, -(nu + 1) / 2);
+            },
+
+            // Triangular PDF: 2x on [0, 1]
+            pdfTriangular: (x) => {
+                if (x >= 0 && x <= 1) return 2 * x;
+                return 0;
+            },
+
+            // Symmetric Triangular PDF: on [0, 2], peak at 1
+            // Height = 1 (Area = 0.5*2*1=1)
+            pdfSymTriangular: (x) => {
+                if (x < 0 || x > 2) return 0;
+                if (x <= 1) return x;
+                return 2 - x;
+            },
+
+            // --- Samplers ---
+
+            // Box-Muller
+            sampleNormal: (mu, sigma) => {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+                const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+                return mu + z * sigma;
+            },
+
+            sampleSkew: (xi, omega, alpha) => {
+                const u0 = MathUtils.sampleNormal(0, 1);
+                const u1 = MathUtils.sampleNormal(0, 1);
+                const delta = alpha / Math.sqrt(1 + alpha * alpha);
+                const z = delta * Math.abs(u0) + Math.sqrt(1 - delta * delta) * u1;
+                return xi + omega * z;
+            },
+
+            sampleStudent: (nu) => {
+                // Z / sqrt(V/nu)
+                const z = MathUtils.sampleNormal(0, 1);
+                let v = 0;
+                for (let i = 0; i < nu; i++) {
+                    const g = MathUtils.sampleNormal(0, 1);
+                    v += g * g;
+                }
+                return z / Math.sqrt(v / nu);
+            },
+
+            sampleTriangular: () => {
+                // Inverse CDF: F(y) = y^2 => y = sqrt(u)
+                const u = Math.random();
+                return Math.sqrt(u);
+            },
+
+            sampleSymTriangular: () => {
+                // Sum of two Uniforms(0, 1) gives Triangular(0, 2)
+                return Math.random() + Math.random();
+            }
+        };
+
+        // Simple Erf implementation
+        const Erf = {
+            erf: (x) => {
+                const sign = (x >= 0) ? 1 : -1;
+                x = Math.abs(x);
+                const a1 = 0.254829592;
+                const a2 = -0.284496736;
+                const a3 = 1.421413741;
+                const a4 = -1.453152027;
+                const a5 = 1.061405429;
+                const p = 0.3275911;
+                const t = 1.0 / (1.0 + p * x);
+                const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+                return sign * y;
+            }
+        };
+
+        // --- Application Logic ---
+
+        class ScoringApp {
+            constructor() {
+                // State
+                this.state = {
+                    distType: 'normal',
+                    mu: 0.5,
+                    sigma: 1.0,
+                    rule: 'nll',
+                    sampleSize: 'theoretical', // 'theoretical' or int
+                    samples: []
+                };
+
+                // Computation Grid (Math - Fine)
+                this.grid = {
+                    min: -7,
+                    max: 7,
+                    step: 0.0001
+                };
+
+                // Plotting Grid (Coarse for UI responsiveness)
+                this.plotGrid = {
+                    min: -7,
+                    max: 7,
+                    step: 0.025
+                };
+
+                // Initialize Grids
+                this.yPointsMath = [];
+                for (let y = this.grid.min; y <= this.grid.max; y += this.grid.step) {
+                    this.yPointsMath.push(y);
+                }
+
+                this.yPointsPlot = [];
+                for (let y = this.plotGrid.min; y <= this.plotGrid.max; y += this.plotGrid.step) {
+                    this.yPointsPlot.push(y);
+                }
+
+                // Cache
+                this.g_pdf_math = []; // True PDF values (Math grid)
+                this.g_pdf_plot = []; // True PDF values (Plot grid)
+
+                // Elements
+                this.els = {
+                    mainPlot: document.getElementById('main-plot'),
+                    scoreBaseline: document.getElementById('score-baseline'),
+                    scoreCurrent: document.getElementById('score-current'),
+                    scoreGap: document.getElementById('score-gap'),
+                    sliderMu: document.getElementById('slider-mu'),
+                    sliderSigma: document.getElementById('slider-sigma'),
+                    valMu: document.getElementById('val-mu'),
+                    valSigma: document.getElementById('val-sigma'),
+                    distSelect: document.getElementById('dist-select'),
+                    ruleSelect: document.getElementById('rule-select'),
+                    sampleSelect: document.getElementById('sample-select'),
+                    ruleDesc: document.getElementById('rule-description')
+                };
+
+                this.initListeners();
+                this.updateTrueDist(); // Initial calc
+                this.render();
+            }
+
+            initListeners() {
+                // Sliders
+                this.els.sliderMu.addEventListener('input', (e) => {
+                    this.state.mu = parseFloat(e.target.value);
+                    this.els.valMu.textContent = this.state.mu.toFixed(2);
+                    this.render(false); // Quick update 
+                });
+
+                this.els.sliderSigma.addEventListener('input', (e) => {
+                    this.state.sigma = parseFloat(e.target.value);
+                    this.els.valSigma.textContent = this.state.sigma.toFixed(3);
+                    this.render(false);
+                });
+
+                // Dropdowns
+                this.els.distSelect.addEventListener('change', (e) => {
+                    this.state.distType = e.target.value;
+                    this.updateTrueDist();
+                    this.render(true); // Full update
+                });
+
+                this.els.ruleSelect.addEventListener('change', (e) => {
+                    this.state.rule = e.target.value;
+                    this.updateInfo();
+                    this.render(true);
+                });
+
+                this.els.sampleSelect.addEventListener('change', (e) => {
+                    const val = e.target.value;
+                    this.state.sampleSize = (val === 'theoretical') ? 'theoretical' : parseInt(val);
+                    this.generateSamples(); // Resample when size changes
+                    this.render(true);
+                });
+            }
+
+            // Generate samples from current True Dist
+            generateSamples() {
+                if (this.state.sampleSize === 'theoretical') {
+                    this.state.samples = [];
+                    return;
+                }
+
+                this.state.samples = [];
+                const N = this.state.sampleSize;
+                for (let i = 0; i < N; i++) {
+                    let val = 0;
+                    switch (this.state.distType) {
+                        case 'normal':
+                            val = MathUtils.sampleNormal(1.0, 1.5);
+                            break;
+                        case 'mixture':
+                            if (Math.random() < 0.6) {
+                                val = MathUtils.sampleNormal(-1.5, 0.8);
+                            } else {
+                                val = MathUtils.sampleNormal(2.5, 0.6);
+                            }
+                            break;
+                        case 'skewed':
+                            val = MathUtils.sampleSkew(-1, 2, 4);
+                            break;
+                        case 'heavy':
+                            val = MathUtils.sampleStudent(3);
+                            break;
+                        case 'triangular':
+                            val = MathUtils.sampleTriangular();
+                            break;
+                        case 'sym_triangular':
+                            val = MathUtils.sampleSymTriangular();
+                            break;
+                        default:
+                            val = MathUtils.sampleNormal(0, 1);
+                    }
+                    this.state.samples.push(val);
+                }
+            }
+
+            getTruePDF(y) {
+                switch (this.state.distType) {
+                    case 'normal':
+                        return MathUtils.pdfNormal(y, 1.0, 1.5); // Mean 1, Sigma 1.5
+                    case 'mixture':
+                        // 0.6 * N(-1.5, 0.8) + 0.4 * N(2.5, 0.6)
+                        return 0.6 * MathUtils.pdfNormal(y, -1.5, 0.8) +
+                            0.4 * MathUtils.pdfNormal(y, 2.5, 0.6);
+                    case 'skewed':
+                        // Skew Normal: xi=-1, omega=2, alpha=4
+                        return MathUtils.pdfSkew(y, -1, 2, 4);
+                    case 'heavy':
+                        // Student-t(3)
+                        return MathUtils.pdfStudent(y, 3);
+                    case 'triangular':
+                        return MathUtils.pdfTriangular(y);
+                    case 'sym_triangular':
+                        return MathUtils.pdfSymTriangular(y);
+                    default:
+                        return MathUtils.pdfNormal(y, 0, 1);
+                }
+            }
+
+            updateTrueDist() {
+                // Precompute PDF for integration (Fine Grid)
+                this.g_pdf_math = this.yPointsMath.map(y => this.getTruePDF(y));
+
+                // Precompute PDF for Plotting (Coarse Grid)
+                this.g_pdf_plot = this.yPointsPlot.map(y => this.getTruePDF(y));
+
+                // Precompute Best Approx (Population) - Use Math grid
+                let E_y = 0;
+                let E_y2 = 0;
+                let sum_p = 0;
+
+                for (let i = 0; i < this.yPointsMath.length; i++) {
+                    const y = this.yPointsMath[i];
+                    const p = this.g_pdf_math[i];
+                    const dy = this.grid.step;
+                    E_y += y * p * dy;
+                    E_y2 += y * y * p * dy;
+                    sum_p += p * dy;
+                }
+
+                E_y /= sum_p;
+                E_y2 /= sum_p;
+
+                this.bestApproximation = {
+                    mu: E_y,
+                    sigma: Math.sqrt(Math.max(0.001, E_y2 - E_y * E_y))
+                };
+
+                // Also update samples since distribution changed
+                this.generateSamples();
+            }
+
+            // Calculate Score S(p, y) for a specific y and current prediction p
+            getScore(y, mu, sigma) {
+                switch (this.state.rule) {
+                    case 'nll':
+                        {
+                            const z = (y - mu) / sigma;
+                            return 0.9189 + Math.log(sigma) + 0.5 * z * z;
+                        }
+
+                    case 'linear':
+                        {
+                            const density = MathUtils.pdfNormal(y, mu, sigma);
+                            return -density;
+                        }
+
+                    case 'crps':
+                        {
+                            const z = (y - mu) / sigma;
+                            const pdf_z = (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * z * z);
+                            const cdf_z = 0.5 * (1 + Erf.erf(z / Math.sqrt(2)));
+
+                            const val = sigma * (z * (2 * cdf_z - 1) + 2 * pdf_z - 1 / Math.sqrt(Math.PI));
+                            return val;
+                        }
+                    default: return 0;
+                }
+            }
+
+            getLoss(mu_p, sigma_p) {
+                if (this.state.sampleSize === 'theoretical') {
+                    // Numerical Integration using Fine Grid
+                    let totalLoss = 0;
+                    for (let i = 0; i < this.yPointsMath.length; i++) {
+                        const y = this.yPointsMath[i];
+                        const g_val = this.g_pdf_math[i];
+                        const s_val = this.getScore(y, mu_p, sigma_p);
+                        totalLoss += g_val * s_val * this.grid.step;
+                    }
+                    return totalLoss;
+                } else {
+                    // Sample based
+                    let totalLoss = 0;
+                    const N = this.state.samples.length;
+                    if (N === 0) return 0;
+
+                    for (let i = 0; i < N; i++) {
+                        const y = this.state.samples[i];
+                        totalLoss += this.getScore(y, mu_p, sigma_p);
+                    }
+                    return totalLoss / N;
+                }
+            }
+
+            // Calculate Baseline Loss (Population or Sample)
+            getBaselineLoss() {
+                if (this.state.sampleSize === 'theoretical') {
+                    // Integration using Fine Grid
+                    let totalLoss = 0;
+                    const G_cdf = new Array(this.yPointsMath.length).fill(0);
+                    let sum = 0;
+                    for (let i = 0; i < this.yPointsMath.length; i++) {
+                        sum += this.g_pdf_math[i] * this.grid.step;
+                        G_cdf[i] = sum;
+                    }
+
+                    for (let i = 0; i < this.yPointsMath.length; i++) {
+                        const y = this.yPointsMath[i];
+                        const g_val = this.g_pdf_math[i];
+                        const s_val = this.getScoreForTruth(y, g_val, G_cdf);
+                        totalLoss += g_val * s_val * this.grid.step;
+                    }
+                    return totalLoss;
+                } else {
+                    // Sample based
+                    // 1/N sum S(g, y_i)
+                    let totalLoss = 0;
+                    const N = this.state.samples.length;
+
+                    // Precompute CDF for CRPS (using Fine Grid)
+                    const G_cdf = new Array(this.yPointsMath.length).fill(0);
+                    let sum = 0;
+                    for (let i = 0; i < this.yPointsMath.length; i++) {
+                        sum += this.g_pdf_math[i] * this.grid.step;
+                        G_cdf[i] = sum;
+                    }
+
+                    for (let i = 0; i < N; i++) {
+                        const y = this.state.samples[i];
+                        // Get g(y) - we need exact value
+                        const g_val = this.getTruePDF(y);
+
+                        const s_val = this.getScoreForTruth(y, g_val, G_cdf);
+                        totalLoss += s_val;
+                    }
+                    return totalLoss / N;
+                }
+            }
+
+            getScoreForTruth(y, g_val, G_cdf) {
+                if (this.state.rule === 'nll') {
+                    return -Math.log(Math.max(1e-12, g_val));
+                } else if (this.state.rule === 'linear') {
+                    return -g_val;
+                } else if (this.state.rule === 'crps') {
+                    // Numerical integral for CRPS of g at y
+                    let crps_integral = 0;
+                    // Note: This is O(N_grid) per call. 
+                    // To optimize, assume G_cdf is precomputed on yPointsMath.
+                    // We need to integrate (G(z) - 1(z>=y))^2 dz over z
+
+                    // Faster approximation on Fine Grid
+                    for (let j = 0; j < this.yPointsMath.length; j++) {
+                        const z = this.yPointsMath[j];
+                        const G_z = G_cdf[j];
+                        const heaviside = (z >= y) ? 1.0 : 0.0;
+                        const diff = G_z - heaviside;
+                        crps_integral += (diff * diff) * this.grid.step;
+                    }
+                    return crps_integral;
+                }
+                return 0;
+            }
+
+            // Reports
+            reportTruth() {
+                this.state.mu = this.bestApproximation.mu;
+                this.state.sigma = this.bestApproximation.sigma;
+
+                this.els.sliderMu.value = this.state.mu;
+                this.els.sliderSigma.value = this.state.sigma;
+                this.els.valMu.textContent = this.state.mu.toFixed(2);
+                this.els.valSigma.textContent = this.state.sigma.toFixed(3);
+
+                this.render(false);
+            }
+
+            reset() {
+                this.state.mu = 0.5;
+                this.state.sigma = 1.0;
+                this.els.sliderMu.value = 0.5;
+                this.els.sliderSigma.value = 1.0;
+                this.els.valMu.textContent = "0.50";
+                this.els.valSigma.textContent = "1.000";
+                this.render(false);
+            }
+
+            updateInfo() {
+                let html = "";
+                if (this.state.rule === 'nll') {
+                    html = `
+                        <strong>Negative Log Likelihood (NLL)</strong> <span class="tag tag-proper">Strictly Proper</span><br><br>
+                        \( S(p, y) = -\log p(y) \).<br>
+                        Penalty is the negative log density. Heavy penalty for assigning low probability to the event that occurs.
+                        Minimizing expected NLL is equivalent to minimizing KL Divergence.
+                    `;
+                } else if (this.state.rule === 'crps') {
+                    html = `
+                        <strong>CRPS</strong> <span class="tag tag-proper">Proper</span><br><br>
+                        Measures distance between predictive CDF and the empirical CDF of the observation (step function).
+                        Robust and strictly proper.
+                    `;
+                } else if (this.state.rule === 'linear') {
+                    html = `
+                        <strong>Linear Score</strong> <span class="tag tag-improper">Improper</span><br><br>
+                        \( S(p, y) = -p(y) \). (Maximizing density).<br>
+                        This rule encourages "hedging" or over-sharpening. 
+                        Try shrinking \(\sigma\) to very small values near the peak of \(g(y)\). 
+                        You can achieve negative Regret (beating the truth!) by reporting a delta function, which is dishonest.
+                    `;
+                }
+                this.els.ruleDesc.innerHTML = html;
+            }
+
+            render(fullUpdate = false) {
+                // 1. Calculate Losses
+                const currentLoss = this.getLoss(this.state.mu, this.state.sigma);
+
+                // Only recalc baseline if needed or if sample size changed (which triggers fullUpdate)
+                if (fullUpdate || this.baselineLoss === undefined || (this.state.rule !== this.lastRule) || (this.state.distType !== this.lastDist)) {
+                    this.baselineLoss = this.getBaselineLoss();
+                    this.lastRule = this.state.rule;
+                    this.lastDist = this.state.distType;
+                    this.updateInfo();
+                }
+
+                const gap = currentLoss - this.baselineLoss;
+
+                // 2. Update Score Board
+                const isSample = this.state.sampleSize !== 'theoretical';
+                this.els.scoreBaseline.textContent = this.baselineLoss.toFixed(3);
+                this.els.scoreCurrent.textContent = currentLoss.toFixed(3);
+
+                const gapEl = this.els.scoreGap;
+
+                gapEl.textContent = `${gap.toFixed(3)}`;
+
+                if (gap < -0.005) {
+                    gapEl.className = "score-value gap-negative";
+                } else {
+                    gapEl.className = "score-value gap-positive";
+                }
+
+                // 3. Update Plot (Use Coarse Grid)
+                const traceTrue = {
+                    x: this.yPointsPlot,
+                    y: this.g_pdf_plot,
+                    type: 'scatter',
+                    mode: 'lines',
+                    fill: 'tozeroy', // Fill area
+                    name: 'True g(y)',
+                    line: { color: 'rgba(255, 255, 255, 0.3)', width: 0 },
+                    fillcolor: 'rgba(255, 255, 255, 0.1)'
+                };
+
+                const traceTrueLine = {
+                    x: this.yPointsPlot,
+                    y: this.g_pdf_plot,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'g(y)',
+                    line: { color: '#94a3b8', width: 2, dash: 'dot' },
+                    showlegend: false
+                };
+
+                // Predictive Dist (Use Coarse Grid)
+                const p_vals = this.yPointsPlot.map(y => MathUtils.pdfNormal(y, this.state.mu, this.state.sigma));
+                const tracePred = {
+                    x: this.yPointsPlot,
+                    y: p_vals,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Pred p(y)',
+                    line: { color: '#38bdf8', width: 3 }
+                };
+
+                const traces = [traceTrue, traceTrueLine, tracePred];
+
+                // Add Rug Plot if Sample Mode
+                if (isSample) {
+                    const traceRug = {
+                        x: this.state.samples,
+                        y: new Array(this.state.samples.length).fill(-0.02),
+                        type: 'scatter',
+                        mode: 'markers',
+                        name: 'Samples',
+                        marker: {
+                            symbol: 'line-ns-open',
+                            color: '#eab308',
+                            size: 10,
+                            line: { width: 2 }
+                        },
+                        hoverinfo: 'x'
+                    };
+                    traces.push(traceRug);
+                }
+
+                // Dynamic Y-Axis Scaling: Include Predictive Max
+                const max_g = Math.max(...this.g_pdf_plot);
+                const max_p = Math.max(...p_vals);
+                const y_max = Math.max(0.6, Math.max(max_g, max_p) * 1.1);
+
+                const layout = {
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    margin: { t: 20, r: 20, b: 40, l: 40 },
+                    xaxis: {
+                        title: 'y',
+                        color: '#94a3b8',
+                        gridcolor: '#334155',
+                        range: [-6, 6]
+                    },
+                    yaxis: {
+                        title: 'Density',
+                        color: '#94a3b8',
+                        gridcolor: '#334155',
+                        range: [0, y_max]
+                    },
+                    legend: {
+                        orientation: 'h',
+                        y: 1.1,
+                        font: { color: '#e2e8f0' }
+                    }
+                };
+
+                Plotly.react('main-plot', traces, layout, { displayModeBar: false, responsive: true });
+            }
+        }
+
+        // Initialize
+        const app = new ScoringApp();
+
+    </script>
+</body>
+
+</html>
