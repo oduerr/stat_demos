@@ -459,7 +459,11 @@
                     slider.addEventListener('input', (e) => {
                         state.coeffs[k] = parseFloat(e.target.value);
                         document.getElementById(`val-${k}`).innerText = state.coeffs[k].toFixed(2);
-                        if (!state.isOptimizing) updatePlots();
+                        if (!state.isOptimizing) {
+                            const currentLoss = calculateLoss(state.coeffs, state.data);
+                            lossValueDiv.innerText = `Loss: ${currentLoss.toFixed(4)}`;
+                            updatePlots();
+                        }
                     });
 
                     container.appendChild(label);
