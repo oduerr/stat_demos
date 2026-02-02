@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF → CDF as Integration (Animation)</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Internal:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Lora', 'Times New Roman', serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background-color: #ffffff;
+    }
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.0rem;
+      margin: 0;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 1.05rem;
+      color: #555;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+    a {
+      color: #0066cc;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover { text-decoration: underline; }
+    .video-wrap {
+      margin-top: 1.25rem;
+    }
+    video {
+      width: 100%;
+      max-width: 900px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #000;
+    }
+    .note {
+      color: #666;
+      font-size: 0.95rem;
+      margin-top: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <script>
+        window.MathJax = {
+          tex: { inlineMath: [['\\(', '\\)'], ['$', '$']] },
+          svg: { fontCache: 'global' }
+        };
+      </script>
+      <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <h1>PDF → CDF as Integration</h1>
+    <div class="subtitle">Manim animation: cumulative probability mass builds the CDF</div>
+    <div style="margin-top:0.75rem;">
+      <a href="./index.html">← Back to STAT Demos</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="video-wrap">
+      <video controls playsinline preload="metadata">
+        <source src="./animations/pdf2cdf.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+      <div class="note" style="margin-top:1.2rem;">  
+        <p>
+            This animation visualizes the construction of the cumulative distribution function
+            from a probability density function.
+          </p>
+          
+          <p>
+            The upper panel shows the probability density function \(f(x)\).
+            Each colored bin represents a small probability mass between
+            \(x_i\) and \(x_{i+1}\).
+          </p>
+          
+          <p>
+            In the lower panel, these masses are accumulated to form the cumulative distribution
+            function \(F(x)\). At each position, all previously added contributions remain visible,
+            emphasizing that \(F(x)\) includes the total probability mass of all values \(t \le x\).
+          </p>
+          
+          <p>
+            In the limit of infinitesimally small bins, we obtain the following relationship between
+            the PDF and the CDF:
+            \[
+              F(x) = \int_{-\infty}^{x} f(t)\,dt .
+            \]
+          </p>
+      </div>
+    </div>
+  </main>
+
+</body>
+</html>
