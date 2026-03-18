@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sampling Distribution (Animation)</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Internal:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Lora', 'Times New Roman', serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background-color: #ffffff;
+    }
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+    }
+    h1 {
+      font-size: 2.0rem;
+      margin: 0;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 1.05rem;
+      color: #555;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+    a {
+      color: #0066cc;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover { text-decoration: underline; }
+    .video-wrap {
+      margin-top: 1.25rem;
+    }
+    video {
+      width: 100%;
+      max-width: 900px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #000;
+    }
+    .note {
+      color: #444;
+      font-size: 0.95rem;
+      margin-top: 1.2rem;
+    }
+    .note p {
+      margin: 0.75rem 0;
+    }
+    .spoiler-wrap {
+      margin-top: 1.5rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .spoiler-toggle {
+      width: 100%;
+      background: #f5f5f5;
+      border: none;
+      padding: 0.65rem 1rem;
+      text-align: left;
+      font-family: 'Lora', 'Times New Roman', serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .spoiler-toggle:hover {
+      background: #ebebeb;
+    }
+    .spoiler-arrow {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-style: normal;
+    }
+    .spoiler-body {
+      display: none;
+      padding: 0.9rem 1rem;
+      font-size: 0.95rem;
+      color: #444;
+      border-top: 1px solid #ddd;
+    }
+    .spoiler-body.open {
+      display: block;
+    }
+    .spoiler-arrow.open {
+      transform: rotate(90deg);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <script>
+      window.MathJax = {
+        tex: { inlineMath: [['\\(', '\\)'], ['$', '$']] },
+        svg: { fontCache: 'global' }
+      };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <h1>Sampling Distribution of \(\hat{\mu}\)</h1>
+    <div class="subtitle">Manim animation: how the distribution of the estimator \(\hat{\mu} = \bar{X}\) emerges from repeated sampling</div>
+    <div style="margin-top:0.75rem;">
+      <a href="./index.html">← Back to STAT Demos</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="video-wrap">
+      <video controls playsinline preload="metadata">
+        <source src="./animations/sampling_distribution.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+
+      <div class="note">
+        <p>
+          This animation illustrates the concept of a <strong>sampling distribution</strong> in the context of
+          parametric estimation. We assume the data are drawn from a <strong>Gaussian (normal) distribution</strong>
+          with two unknown parameters:
+          \[
+            X_i \sim \mathcal{N}(\mu,\, \sigma^2), \quad i = 1, \ldots, n.
+          \]
+          Our goal is to <strong>estimate the parameter \(\mu\)</strong> from the data.
+        </p>
+
+        <p>
+          We use the <strong>sample mean</strong> as our estimator:
+          \[
+            \hat{\mu} = \bar{X} = \frac{1}{n}\sum_{i=1}^{n} X_i.
+          \]
+          Here \(\hat{\mu}\) (read: "mu hat") denotes that this is an <em>estimate</em> of the
+          true but unknown parameter \(\mu\). It is in fact the <strong>maximum likelihood estimator</strong>
+          (MLE) of \(\mu\) for a Gaussian model.
+        </p>
+
+        <p>
+          Because \(\hat{\mu}\) is computed from random data, it is itself a random variable.
+          The animation builds up the <strong>sampling distribution</strong> of \(\hat{\mu}\) by
+          repeating the following experiment many times: draw a fresh sample of size \(n\),
+          compute \(\hat{\mu}\), and record the result. The histogram of these values approximates
+          the sampling distribution of \(\hat{\mu}\).
+        </p>
+
+        <p>
+          The estimator \(\hat{\mu} = \bar{X}\) is <strong>unbiased</strong> — its expected value
+          equals the true parameter regardless of \(\sigma\):
+          \[
+            \mathbb{E}[\hat{\mu}] = \mu.
+          \]
+        </p>
+
+        <p>
+          Because \(\hat{\mu}\) is a continuous random variable, its sampling distribution is described by a
+          probability density function (PDF). A valid PDF must satisfy:
+          \[
+            \int_{-\infty}^{\infty} f_{\hat{\mu}}(x)\,dx = 1.
+          \]
+          In the animation, the area under the histogram should therefore integrate to&nbsp;1.
+        </p>
+
+        <p style="color:#8b0000; font-weight:600;">
+          There is a small error in the sampling distribution shown in the animation — can you spot it?
+        </p>
+
+        <div class="spoiler-wrap">
+          <button class="spoiler-toggle" onclick="toggleSpoiler(this)" aria-expanded="false">
+            <span class="spoiler-arrow">▶</span> Reveal the answer
+          </button>
+          <div class="spoiler-body">
+            <p>
+              The histogram bars are displayed with their <em>raw counts</em> (or relative frequencies) on the
+              \(y\)-axis rather than a proper <em>probability density</em>. As a result, the area under the
+              displayed histogram does <strong>not</strong> integrate to 1 — it integrates to the bin width times
+              the total number of samples (or to 1 only if relative frequencies happen to equal the density values).
+            </p>
+            <p>
+              To make the histogram a proper probability density, each bar height must be divided by
+              \((\text{total samples}) \times (\text{bin width})\), so that the sum of all bar areas equals 1:
+              \[
+                \sum_k \frac{\text{count}_k}{N \cdot \Delta x} \cdot \Delta x = \frac{1}{N}\sum_k \text{count}_k = 1.
+              \]
+              In other words, the \(y\)-axis should show <strong>density</strong>, not frequency.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function toggleSpoiler(btn) {
+      const body = btn.nextElementSibling;
+      const arrow = btn.querySelector('.spoiler-arrow');
+      const isOpen = body.classList.toggle('open');
+      arrow.classList.toggle('open', isOpen);
+      btn.setAttribute('aria-expanded', isOpen);
+    }
+  </script>
+
+</body>
+</html>

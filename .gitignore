@@ -1,3 +1,4 @@
 .DS_Store
 *.pyc
 /animations/cdf_two_pdf/media
+/animations/media
