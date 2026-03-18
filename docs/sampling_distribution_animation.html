@@ -142,8 +142,8 @@
             \hat{\mu} = \bar{X} = \frac{1}{n}\sum_{i=1}^{n} X_i.
           \]
           Here \(\hat{\mu}\) (read: "mu hat") denotes that this is an <em>estimate</em> of the
-          true but unknown parameter \(\mu\). It is in fact the <strong>maximum likelihood estimator</strong>
-          (MLE) of \(\mu\) for a Gaussian model.
+          true but unknown parameter \(\mu\). The sample mean is in fact the <strong>maximum likelihood estimator</strong>
+          (MLE) of \(\mu\) for a Gaussian model and also arises when applying the method of moments.
         </p>
 
         <p>
@@ -181,18 +181,7 @@
           </button>
           <div class="spoiler-body">
             <p>
-              The histogram bars are displayed with their <em>raw counts</em> (or relative frequencies) on the
-              \(y\)-axis rather than a proper <em>probability density</em>. As a result, the area under the
-              displayed histogram does <strong>not</strong> integrate to 1 — it integrates to the bin width times
-              the total number of samples (or to 1 only if relative frequencies happen to equal the density values).
-            </p>
-            <p>
-              To make the histogram a proper probability density, each bar height must be divided by
-              \((\text{total samples}) \times (\text{bin width})\), so that the sum of all bar areas equals 1:
-              \[
-                \sum_k \frac{\text{count}_k}{N \cdot \Delta x} \cdot \Delta x = \frac{1}{N}\sum_k \text{count}_k = 1.
-              \]
-              In other words, the \(y\)-axis should show <strong>density</strong>, not frequency.
+              The sampling distribution is not normalized, it does not integrate to 1. It should be higher than the pdf of the normal distribution from which the data is drawn.              
             </p>
           </div>
         </div>
