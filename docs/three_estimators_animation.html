@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three Estimators — Bias &amp; Variance (Animation)</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Internal:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap"
+    rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Lora', 'Times New Roman', serif;
+      line-height: 1.6;
+      color: #1a1a1a;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background-color: #ffffff;
+    }
+    header {
+      border-bottom: 2px solid #1a1a1a;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+    }
+    h1 { font-size: 2.0rem; margin: 0; font-weight: 600; }
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 2rem;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.3rem;
+    }
+    .subtitle {
+      font-size: 1.05rem;
+      color: #555;
+      font-style: italic;
+      margin-top: 0.5rem;
+    }
+    a { color: #0066cc; text-decoration: none; font-weight: 600; }
+    a:hover { text-decoration: underline; }
+    video {
+      width: 100%;
+      max-width: 900px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #000;
+      margin-top: 1.25rem;
+    }
+    .note { color: #444; font-size: 0.95rem; margin-top: 1.2rem; }
+    .note p { margin: 0.75rem 0; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.95rem;
+      margin: 1rem 0;
+    }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.8rem; text-align: left; }
+    th { background: #f5f5f5; font-weight: 600; }
+    .spoiler-wrap {
+      margin-top: 1.5rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .spoiler-toggle {
+      width: 100%;
+      background: #f5f5f5;
+      border: none;
+      padding: 0.65rem 1rem;
+      text-align: left;
+      font-family: 'Lora', 'Times New Roman', serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #333;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .spoiler-toggle:hover { background: #ebebeb; }
+    .spoiler-arrow { display: inline-block; transition: transform 0.2s ease; font-style: normal; }
+    .spoiler-body {
+      display: none;
+      padding: 0.9rem 1rem;
+      font-size: 0.95rem;
+      color: #444;
+      border-top: 1px solid #ddd;
+    }
+    .spoiler-body.open { display: block; }
+    .spoiler-arrow.open { transform: rotate(90deg); }
+    pre {
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    code { font-family: 'Menlo', 'Consolas', monospace; }
+    .lang-label {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 0.78rem;
+      color: #888;
+      margin-bottom: 0.2rem;
+      margin-top: 1.2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <script>
+      window.MathJax = {
+        tex: { inlineMath: [['\\(', '\\)'], ['$', '$']] },
+        svg: { fontCache: 'global' }
+      };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <h1>Bias &amp; Variance of Estimators</h1>
+    <div class="subtitle">Manim animation: comparing the sampling distributions of the mean, the median, and a biased estimator</div>
+    <div style="margin-top:0.75rem;">
+      <a href="./index.html">← Back to STAT Demos</a>
+    </div>
+  </header>
+
+  <main>
+    <video controls playsinline preload="metadata">
+      <source src="./animations/three_estimators.mp4" type="video/mp4" />
+      Your browser does not support the video tag.
+    </video>
+
+    <div class="note">
+      <p>
+        This animation compares <strong>three estimators</strong> for the mean \(\mu\) of a Gaussian
+        model \(X_i \sim \mathcal{N}(\mu, \sigma^2)\). Each estimator is applied to many independent
+        samples of size \(n\), and the resulting pile of estimates reveals the estimator's
+        <em>sampling distribution</em>.
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Estimator</th><th>Formula</th><th>Property</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong style="color:#4caf50">Mean</strong></td>
+            <td>\(\hat{\mu}_{\text{mean}} = \bar{X}\)</td>
+            <td>Unbiased, low variance</td>
+          </tr>
+          <tr>
+            <td><strong style="color:#009688">Median</strong></td>
+            <td>\(\hat{\mu}_{\text{med}} = \tilde{X}\)</td>
+            <td>Unbiased, higher variance</td>
+          </tr>
+          <tr>
+            <td><strong style="color:#f44336">Liar</strong> 😈</td>
+            <td>\(\hat{\mu}_{\text{liar}} = \bar{X} + 5\)</td>
+            <td>Biased by \(+5\)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Unbiasedness</h2>
+      <p>
+        An estimator \(\hat{\theta}\) is <strong>unbiased</strong> if its expected value equals the true parameter:
+        \[
+          \mathbb{E}[\hat{\theta}] = \theta.
+        \]
+        Both the sample mean and the sample median satisfy this for a symmetric distribution.
+        The Liar estimator adds a constant offset and is therefore biased:
+        \[
+          \mathbb{E}[\hat{\mu}_{\text{liar}}] = \mu + 5 \neq \mu.
+        \]
+        No matter how many data points are collected, the Liar's sampling distribution will never
+        centre on the truth.
+      </p>
+
+      <h2>Variance (Efficiency)</h2>
+      <p>
+        Among unbiased estimators, we prefer the one with the smallest variance — this is called
+        <strong>efficiency</strong>. For a Gaussian model there is a Cramér–Rao lower bound that tells us
+        the best achievable variance for any unbiased estimator is \(\sigma^2 / n\).
+        The sample mean achieves this bound exactly:
+        \[
+          \mathrm{Var}(\bar{X}) = \frac{\sigma^2}{n}.
+        \]
+        The sample median has asymptotic variance \(\frac{\pi}{2} \cdot \frac{\sigma^2}{n} \approx 1.57 \cdot \frac{\sigma^2}{n}\),
+        so it is about 57 % less efficient than the mean for Gaussian data — visible as the
+        wider teal curve in the animation.
+      </p>
+
+      <!-- <h2>Mean Squared Error</h2>
+      <p>
+        A single number that captures both bias and variance is the <strong>Mean Squared Error</strong>:
+        \[
+          \mathrm{MSE}(\hat{\theta}) = \mathrm{Var}(\hat{\theta}) + \bigl[\mathrm{Bias}(\hat{\theta})\bigr]^2.
+        \]
+        Even if the Liar's variance matches the mean (same width of curve), its bias of 5 dominates
+        and gives a far larger MSE — illustrating why bias matters even with infinite data.
+      </p>
+
+      <div class="spoiler-wrap">
+        <button class="spoiler-toggle" onclick="toggleSpoiler(this)" aria-expanded="false">
+          <span class="spoiler-arrow">▶</span> Exercise: what happens to all three curves as \(n \to \infty\)?
+        </button>
+        <div class="spoiler-body">
+          <p>
+            The green (mean) and teal (median) curves both collapse to a spike at \(\mu\) — both are
+            <em>consistent</em> estimators. The red (Liar) curve also collapses, but to a spike
+            at \(\mu + 5\). Consistency cannot rescue a biased estimator: the bias persists
+            regardless of sample size.
+          </p>
+        </div>
+      </div>
+    </div> -->
+
+    <h2>Reproduce in code</h2>
+
+    <p class="lang-label">Python</p>
+    <pre><code>import numpy as np
+import matplotlib.pyplot as plt
+
+mu, sigma, n, n_reps = 42, 0.7, 10, 2000
+bias = 5  # constant added by the biased estimator
+
+rng = np.random.default_rng(42)
+
+# --- build three sampling distributions with an explicit loop ---
+est_mean, est_median, est_biased = [], [], []
+for _ in range(n_reps):
+    sample = rng.normal(mu, sigma, n)       # draw one fresh sample of size n
+    est_mean.append(sample.mean())          # estimator 1: sample mean
+    est_median.append(np.median(sample))    # estimator 2: sample median
+    est_biased.append(sample.mean() + bias) # estimator 3: biased (mean + 5)
+
+# compact vectorised equivalent:
+# samples    = rng.normal(mu, sigma, (n_reps, n))
+# est_mean   = samples.mean(axis=1)
+# est_median = np.median(samples, axis=1)
+# est_biased = est_mean + bias
+
+fig, ax = plt.subplots(figsize=(10, 4))
+for ests, col, lbl in [
+    (est_mean,   'green', 'Mean'),
+    (est_median, 'teal',  'Median'),
+    (est_biased, 'red',   f'Liar  (mean + {bias})'),
+]:
+    ax.hist(ests, bins=60, density=True, alpha=0.45, color=col, label=lbl)
+
+ax.axvline(mu, color='gold', linestyle='--', linewidth=2, label='True μ = 42')
+ax.set(xlabel='Estimate', ylabel='Density',
+       title='Sampling Distributions: Mean vs Median vs Biased')
+ax.legend()
+plt.tight_layout()
+plt.show()
+</code></pre>
+
+    <p class="lang-label">R</p>
+    <pre><code>library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+mu &lt;- 42;  sigma &lt;- 0.7;  n &lt;- 10;  n_reps &lt;- 2000;  bias &lt;- 5
+set.seed(42)
+
+# --- build three sampling distributions with an explicit loop ---
+est_mean   &lt;- numeric(n_reps)
+est_median &lt;- numeric(n_reps)
+est_biased &lt;- numeric(n_reps)
+
+for (i in seq_len(n_reps)) {
+  sample        &lt;- rnorm(n, mu, sigma)    # draw one fresh sample of size n
+  est_mean[i]   &lt;- mean(sample)           # estimator 1: sample mean
+  est_median[i] &lt;- median(sample)         # estimator 2: sample median
+  est_biased[i] &lt;- mean(sample) + bias    # estimator 3: biased (mean + 5)
+}
+
+# compact vectorised equivalent:
+# mat        &lt;- matrix(rnorm(n_reps * n, mu, sigma), nrow = n_reps)
+# est_mean   &lt;- rowMeans(mat)
+# est_median &lt;- apply(mat, 1, median)
+# est_biased &lt;- est_mean + bias
+
+df &lt;- data.frame(Mean = est_mean, Median = est_median, Liar = est_biased) |&gt;
+  pivot_longer(everything(), names_to = "Estimator", values_to = "estimate") |&gt;
+  mutate(Estimator = factor(Estimator, levels = c("Mean", "Median", "Liar")))
+
+ggplot(df, aes(estimate, fill = Estimator, colour = Estimator)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 60,
+                 alpha = 0.45, position = "identity") +
+  geom_vline(xintercept = mu, colour = "gold",
+             linetype = "dashed", linewidth = 1.2) +
+  scale_fill_manual(  values = c(Mean = "green4", Median = "darkcyan", Liar = "red3")) +
+  scale_colour_manual(values = c(Mean = "green4", Median = "darkcyan", Liar = "red3")) +
+  labs(title = "Sampling Distributions: Mean vs Median vs Biased Estimator",
+       x = "Estimate", y = "Density") +
+  theme_minimal()
+</code></pre>
+
+  </main>
+
+  <p style="margin-top:2.5rem; font-size:0.88rem; color:#888;">
+    Animation created with <a href="https://www.manim.community/">Manim Community</a> using
+    Claude Code (Sonnet 4.6). Storyboard: <code>animations/sampling/story_board_mean_med_biased.md</code>.
+    Manim source: <code>animations/sampling/three_estimators.py</code>.
+  </p>
+
+  <script>
+    function toggleSpoiler(btn) {
+      const body = btn.nextElementSibling;
+      const arrow = btn.querySelector('.spoiler-arrow');
+      const isOpen = body.classList.toggle('open');
+      arrow.classList.toggle('open', isOpen);
+      btn.setAttribute('aria-expanded', isOpen);
+    }
+  </script>
+
+</body>
+</html>

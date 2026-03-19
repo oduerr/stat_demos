@@ -8,6 +8,31 @@
     href="https://fonts.googleapis.com/css2?family=Internal:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap"
     rel="stylesheet">
   <style>
+    pre {
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 5px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    code { font-family: 'Menlo', 'Consolas', monospace; }
+    .lang-label {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 0.78rem;
+      color: #888;
+      margin-bottom: 0.2rem;
+      margin-top: 1.2rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 2rem;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 0.3rem;
+    }
     body {
       font-family: 'Lora', 'Times New Roman', serif;
       line-height: 1.6;
@@ -151,7 +176,7 @@
           The animation builds up the <strong>sampling distribution</strong> of \(\hat{\mu}\) by
           repeating the following experiment many times: draw a fresh sample of size \(n\),
           compute \(\hat{\mu}\), and record the result. The histogram of these values approximates
-          the sampling distribution of \(\hat{\mu}\).
+          the sampling distribution of \(\hat{\mu}\) and the curve at the end of the animation is the pdf of the sampling distribution that would arise if we would draw an infinite number of samples.
         </p>
 
         <p>
@@ -161,18 +186,10 @@
             \mathbb{E}[\hat{\mu}] = \mu.
           \]
         </p>
-
-        <p>
-          Because \(\hat{\mu}\) is a continuous random variable, its sampling distribution is described by a
-          probability density function (PDF). A valid PDF must satisfy:
-          \[
-            \int_{-\infty}^{\infty} f_{\hat{\mu}}(x)\,dx = 1.
-          \]
-          In the animation, the area under the histogram should therefore integrate to&nbsp;1.
-        </p>
+        In German Statistics parlance, the unbiasedness of the estimator $\hat\mu=\bar{X}$ is called <em>erwartungstreuer Schätzer</em> but you also hear it called <em>unbiased Schätzer</em>.
 
         <p style="color:#8b0000; font-weight:600;">
-          There is a small error in the sampling distribution shown in the animation — can you spot it?
+          By the way, there is a small error in the sampling distribution shown in the animation — can you spot it?
         </p>
 
         <div class="spoiler-wrap">
@@ -181,6 +198,13 @@
           </button>
           <div class="spoiler-body">
             <p>
+              Because \(\hat{\mu}\) is a continuous random variable, its sampling distribution is described by a
+              probability density function (PDF). A valid PDF must satisfy:
+              \[
+                \int_{-\infty}^{\infty} f_{\hat{\mu}}(x)\,dx = 1.
+              \]
+              In the animation, the area under the histogram should therefore integrate to&nbsp;1.
+              
               The sampling distribution is not normalized, it does not integrate to 1. It should be higher than the pdf of the normal distribution from which the data is drawn.              
             </p>
           </div>
@@ -188,6 +212,69 @@
       </div>
     </div>
   </main>
+
+    <h2>Reproduce in code</h2>
+
+    <p class="lang-label">Python</p>
+    <pre><code>import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+mu, sigma, n, n_reps = 42, 0.7, 10, 1000
+
+rng = np.random.default_rng(42)
+
+# --- build the sampling distribution with an explicit loop ---
+sample_means = []
+for _ in range(n_reps):
+    sample = rng.normal(mu, sigma, n)  # draw one fresh sample of size n
+    sample_means.append(sample.mean()) # compute and store the estimate
+
+# compact one-liner equivalent:
+# sample_means = [rng.normal(mu, sigma, n).mean() for _ in range(n_reps)]
+
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.hist(sample_means, bins=40, density=True, alpha=0.6,
+        color='steelblue', label='Sample means')
+x = np.linspace(mu - 4*sigma/np.sqrt(n), mu + 4*sigma/np.sqrt(n), 300)
+ax.plot(x, norm.pdf(x, mu, sigma/np.sqrt(n)), 'r-', lw=2,
+        label=r'$\mathcal{N}(\mu,\,\sigma/\sqrt{n})$')
+ax.axvline(mu, color='gold', linestyle='--', label='True μ = 42')
+ax.set(xlabel='Sample mean', ylabel='Density',
+       title='Sampling Distribution of the Mean')
+ax.legend()
+plt.tight_layout()
+plt.show()
+</code></pre>
+
+    <p class="lang-label">R</p>
+    <pre><code>library(ggplot2)
+
+mu &lt;- 42;  sigma &lt;- 0.7;  n &lt;- 10;  n_reps &lt;- 1000
+set.seed(42)
+
+# --- build the sampling distribution with an explicit loop ---
+sample_means &lt;- numeric(n_reps)
+for (i in seq_len(n_reps)) {
+  sample         &lt;- rnorm(n, mu, sigma)  # draw one fresh sample of size n
+  sample_means[i] &lt;- mean(sample)        # compute and store the estimate
+}
+
+# compact one-liner equivalent:
+# sample_means &lt;- replicate(n_reps, mean(rnorm(n, mu, sigma)))
+
+x_seq  &lt;- seq(mu - 4*sigma/sqrt(n), mu + 4*sigma/sqrt(n), length.out = 300)
+theory &lt;- data.frame(x = x_seq, y = dnorm(x_seq, mu, sigma/sqrt(n)))
+
+ggplot(data.frame(x = sample_means), aes(x)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40,
+                 fill = "steelblue", alpha = 0.6) +
+  geom_line(data = theory, aes(x, y), colour = "red", linewidth = 1.2) +
+  geom_vline(xintercept = mu, colour = "gold", linetype = "dashed") +
+  labs(title = "Sampling Distribution of the Mean",
+       x = "Sample mean", y = "Density") +
+  theme_minimal()
+</code></pre>
 
   <script>
     function toggleSpoiler(btn) {

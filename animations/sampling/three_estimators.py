@@ -27,7 +27,7 @@ MEAN_SAMP_SD = TRUE_SD / np.sqrt(SAMPLE_N)                       # ≈ 0.221
 MED_SAMP_SD  = TRUE_SD * np.sqrt(np.pi / 2) / np.sqrt(SAMPLE_N) # ≈ 0.277
 
 COL_MEAN = GREEN_B
-COL_MED  = BLUE_B
+COL_MED  = TEAL_B
 COL_BIAS = RED_B
 
 
@@ -61,9 +61,9 @@ class ThreeEstimators(Scene):
         # Three Pi creatures (right side) ─────────────────────────────────────
         CREATURE_Y = 1.3
         CREATURE_INFO = [
-            (2.0, COL_MEAN, r"\hat{\mu}_{\mathrm{mean}} = \bar{x}",        "Pi-Mean"),
-            (4.5, COL_MED,  r"\hat{\mu}_{\mathrm{med}}  = \tilde{x}",      "Pi-Median"),
-            (6.8, COL_BIAS, r"\hat{\mu}_{\mathrm{liar}} = \bar{x}+5",      "Pi-Liar"),
+            (2.0,  COL_MEAN, r"\hat{\mu}_{\mathrm{mean}} = \bar{x}",        "Mean"),
+            (4.15, COL_MED,  r"\hat{\mu}_{\mathrm{med}}  = \tilde{x}",     "Median"),
+            (6.3,  COL_BIAS, r"\hat{\mu}_{\mathrm{liar}} = \bar{x}+5",     "Liar"),
         ]
         creature_heads     = []
         creature_positions = []
@@ -115,17 +115,17 @@ class ThreeEstimators(Scene):
             ax.c2p(TRUE_MU, norm_pdf(TRUE_MU, TRUE_MU, TRUE_SD) + 0.06),
             color=YELLOW, stroke_width=2, dash_length=0.1,
         )
-        mu_lbl   = (MathTex(r"\mu = 42", color=YELLOW, font_size=28)
-                    .next_to(ax.c2p(TRUE_MU, 0), UR, buff=0.15))
-        lock_lbl = (Text("(unknown)  🔒", font_size=15, color=GREY_A)
-                    .next_to(mu_lbl, DOWN, buff=0.08))
+        mu_lbl   = (MathTex(r"\mu = 42", color=YELLOW, font_size=26)
+                    .next_to(ax.c2p(TRUE_MU, 0), DOWN, buff=0.18))
+        lock_lbl = (Text("(unknown)  🔒", font_size=14, color=GREY_A)
+                    .next_to(mu_lbl, DOWN, buff=0.06))
 
         self.play(Create(ax), run_time=0.8)
         self.play(Create(bell), run_time=1.0)
         self.play(Create(mu_tick), Write(mu_lbl), FadeIn(lock_lbl), run_time=0.7)
         self.wait(0.5)
 
-        data_line = Line([0.8, -2.9, 0], [7.5, -2.9, 0], color=GREY_B, stroke_width=1.5)
+        data_line = Line([0.8, -2.9, 0], [7.0, -2.9, 0], color=GREY_B, stroke_width=1.5)
         self.play(Create(data_line))
 
         # ── Sampling helper ───────────────────────────────────────────────────
@@ -276,22 +276,23 @@ class ThreeEstimators(Scene):
             color=YELLOW, stroke_width=2, dash_length=0.12,
         )
         self.play(Create(align_line), run_time=0.5)
-        lbl4 = (VGroup(Text("Unbiased", font_size=19, color=COL_MEAN),
-                       Text("Efficient", font_size=19, color=COL_MEAN))
-                .arrange(DOWN, buff=0.08)
-                .next_to(green_curve, RIGHT, buff=0.1).shift(UP*0.2))
+        # Labels are placed at fixed ax-coordinate positions to avoid crowding
+        lbl4 = (VGroup(Text("Unbiased",    font_size=17, color=COL_MEAN),
+                       Text("Low Variance", font_size=17, color=COL_MEAN))
+                .arrange(DOWN, buff=0.06)
+                .move_to(ax.c2p(-2.3, 0.50)))
         self.play(Write(lbl4), run_time=0.6)
         self.wait(1.0)
 
-        # ── Scene 5: Blue — unbiased but less efficient ───────────────────────
+        # ── Scene 5: Teal — unbiased but less efficient ───────────────────────
         blue_hist  = make_hist(all_med_ests, COL_MED)
         self.play(ReplacementTransform(all_blue_stars, blue_hist), run_time=1.2)
         blue_curve = plot_curve(TRUE_MU, MED_SAMP_SD, COL_MED)
         self.play(ReplacementTransform(blue_hist, blue_curve), run_time=1.2)
-        lbl5 = (VGroup(Text("Unbiased",      font_size=19, color=COL_MED),
-                       Text("Less efficient", font_size=19, color=COL_MED))
-                .arrange(DOWN, buff=0.08)
-                .next_to(blue_curve, LEFT, buff=0.1).shift(DOWN*0.1))
+        lbl5 = (VGroup(Text("Unbiased",     font_size=17, color=COL_MED),
+                       Text("High Variance", font_size=17, color=COL_MED))
+                .arrange(DOWN, buff=0.06)
+                .move_to(ax.c2p(-2.3, 0.33)))
         self.play(Write(lbl5), run_time=0.6)
         self.wait(1.0)
 
@@ -301,16 +302,16 @@ class ThreeEstimators(Scene):
         red_curve = plot_curve(BIAS, MEAN_SAMP_SD, COL_BIAS)
         self.play(ReplacementTransform(red_hist, red_curve), run_time=1.2)
 
-        # Bias arrow: true μ → biased center
-        bias_y = 0.18
+        # Bias arrow: true μ → biased center, placed below x-axis
+        bias_y = -0.16
         bias_arrow = Arrow(
             ax.c2p(TRUE_MU, bias_y), ax.c2p(BIAS, bias_y),
             color=COL_BIAS, buff=0.04, stroke_width=3,
         )
-        bias_txt = (MathTex(r"\text{Bias} = +5", color=COL_BIAS, font_size=22)
-                    .next_to(bias_arrow, UP, buff=0.08))
+        bias_txt = (MathTex(r"\text{Bias} = +5", color=COL_BIAS, font_size=20)
+                    .next_to(bias_arrow, DOWN, buff=0.06))
         self.play(GrowArrow(bias_arrow), Write(bias_txt), run_time=0.8)
-        lbl6 = (Text("Biased!", font_size=20, color=COL_BIAS)
-                .next_to(red_curve, RIGHT, buff=0.15))
+        lbl6 = (Text("Biased!", font_size=17, color=COL_BIAS)
+                .move_to(ax.c2p(BIAS, 0.62)))
         self.play(Write(lbl6), run_time=0.5)
         self.wait(3.0)
