@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Bayesian Linear Regression — Demo</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f0f0f2; color: #1d1d1f; }
+
+  header {
+    background: #1d1d1f; color: #f5f5f7;
+    padding: 14px 28px; font-size: 1.05rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  /* ── loader ── */
+  #loader { max-width: 580px; margin: 36px auto; padding: 26px;
+            background: #fff; border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,.1); }
+  #loader h2 { font-size: .9rem; color: #555; margin-bottom: 14px; }
+
+  /* drop zone */
+  #dropzone {
+    border: 2px dashed #aaa; border-radius: 10px;
+    padding: 22px 18px; text-align: center;
+    color: #666; font-size: .88rem; cursor: pointer;
+    transition: background .15s, border-color .15s;
+    margin-bottom: 14px;
+  }
+  #dropzone.over { background: #e8f0fe; border-color: #0071e3; color: #0071e3; }
+  #dropzone p { margin: 0; }
+  #dropzone .hint { font-size: .78rem; color: #999; margin-top: 6px; }
+
+  /* per-file rows */
+  .file-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: .83rem; }
+  .file-row .fname { width: 190px; font-weight: 500; }
+  .file-row .fstatus { flex:1; color:#888; font-style:italic; overflow:hidden;
+                       text-overflow:ellipsis; white-space:nowrap; }
+  .file-row .fstatus.ok { color: #28a745; font-style: normal; font-weight: 500; }
+  .file-row input[type=file] { display:none; }
+  .file-row label.pick-btn {
+    padding: 4px 10px; background: #e8e8ed; border-radius: 6px;
+    cursor: pointer; font-size: .8rem; white-space: nowrap;
+  }
+  .file-row label.pick-btn:hover { background: #d1d1d6; }
+
+  #restore-btn {
+    display: none; width: 100%; margin-bottom: 10px;
+    padding: 8px; background: #f0f7ff; border: 1px solid #0071e3;
+    border-radius: 8px; color: #0071e3; font-size: .85rem; cursor: pointer;
+  }
+  #restore-btn:hover { background: #e0eeff; }
+  #load-btn {
+    margin-top: 6px; padding: 9px 26px;
+    background: #0071e3; color: #fff; border: none;
+    border-radius: 8px; font-size: .9rem; cursor: pointer;
+  }
+  #load-btn:disabled { background: #aaa; cursor: default; }
+  #status { margin-top: 8px; font-size: .8rem; color: #888; }
+  #clear-cache { font-size:.75rem; color:#bbb; cursor:pointer;
+                 text-decoration:underline; margin-top:6px; display:none; }
+
+  /* ── app ── */
+  #app { display: none; padding: 14px 18px 20px; }
+
+  /* options bar */
+  #optbar {
+    display: flex; align-items: center; gap: 18px;
+    margin-bottom: 10px; font-size: .84rem; color: #444;
+  }
+  .toggle-group { display: flex; gap: 0; border-radius: 7px; overflow: hidden;
+                  border: 1px solid #ccc; }
+  .tg-btn {
+    padding: 5px 14px; background: #f5f5f7; border: none;
+    cursor: pointer; font-size: .82rem; transition: background .12s;
+  }
+  .tg-btn.active { background: #0071e3; color: #fff; }
+  .tg-btn:not(.active):hover { background: #e8e8ed; }
+
+  /* plots row */
+  #plots-row { display: flex; gap: 10px; align-items: stretch; }
+  .plot-wrap { background: #fff; border-radius: 10px;
+               box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
+  #wrap-scatter2d { display: flex; gap: 10px; flex: 2; }
+  #wrap-scatter2d .plot-wrap { flex: 1; }
+  #wrap-scatter3d { display: none; flex: 2; }
+  #wrap-pred      { flex: 1.6; }
+  .plot-div       { width: 100%; height: 420px; }
+
+  /* controls */
+  #controls {
+    display: flex; align-items: center; gap: 12px;
+    margin-top: 12px; padding: 11px 16px;
+    background: #fff; border-radius: 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); flex-wrap: wrap;
+  }
+  .ctrl-btn {
+    padding: 7px 15px; border: none; border-radius: 7px;
+    font-size: .88rem; cursor: pointer; background: #e8e8ed; color: #1d1d1f;
+  }
+  .ctrl-btn:hover { background: #d1d1d6; }
+  #btn-play { background: #0071e3; color: #fff; min-width: 80px; }
+  #btn-play:hover { background: #0077ed; }
+  #slider { flex: 1; min-width: 140px; accent-color: #0071e3; }
+  #sample-label { font-size: .85rem; font-weight: 500; min-width: 115px; }
+  .speed-row { display:flex; align-items:center; gap:5px; font-size:.8rem; color:#555; }
+  #speed { width:80px; accent-color:#0071e3; }
+</style>
+</head>
+<body>
+
+<header>
+  <span>Bayesian Linear Regression — Posterior &amp; Predictive Explorer</span>
+</header>
+
+<!-- ── loader ── -->
+<div id="loader">
+  <h2>Drop CSV files or click to pick (auto-detected by filename)</h2>
+
+  <div id="dropzone">
+    <p>&#x1F4C2; Drop <code>observed_data.csv</code>, <code>posterior_samples.csv</code>,
+       <code>posterior_predictive.csv</code> here</p>
+    <p class="hint">or use the buttons below — all three at once is fine</p>
+  </div>
+
+  <button id="restore-btn">&#x21BA; Restore last session from browser cache</button>
+
+  <div class="file-row">
+    <span class="fname">observed_data.csv</span>
+    <span class="fstatus" id="st-observed">not loaded</span>
+    <input type="file" id="f-observed" accept=".csv" />
+    <label class="pick-btn" for="f-observed">Pick file…</label>
+  </div>
+  <div class="file-row">
+    <span class="fname">posterior_samples.csv</span>
+    <span class="fstatus" id="st-samples">not loaded</span>
+    <input type="file" id="f-samples" accept=".csv" />
+    <label class="pick-btn" for="f-samples">Pick file…</label>
+  </div>
+  <div class="file-row">
+    <span class="fname">posterior_predictive.csv</span>
+    <span class="fstatus" id="st-predictive">not loaded</span>
+    <input type="file" id="f-predictive" accept=".csv" />
+    <label class="pick-btn" for="f-predictive">Pick file…</label>
+  </div>
+
+  <button id="load-btn" disabled>Visualise</button>
+  <div id="status">Load all three files to continue.</div>
+  <div id="clear-cache" onclick="clearCache()">clear saved session</div>
+</div>
+
+<!-- ── app ── -->
+<div id="app">
+  <div id="optbar">
+    <span>Scatter view:</span>
+    <div class="toggle-group">
+      <button class="tg-btn active" id="btn-2d" onclick="setScatterMode('2d')">2D</button>
+      <button class="tg-btn"        id="btn-3d" onclick="setScatterMode('3d')">3D</button>
+    </div>
+  </div>
+
+  <div id="plots-row">
+    <!-- 2D scatter (two side-by-side) -->
+    <div id="wrap-scatter2d">
+      <div class="plot-wrap"><div class="plot-div" id="plot-b0b1"></div></div>
+      <div class="plot-wrap"><div class="plot-div" id="plot-b1sig"></div></div>
+    </div>
+    <!-- 3D scatter (single) -->
+    <div class="plot-wrap" id="wrap-scatter3d">
+      <div class="plot-div" id="plot-3d" style="height:420px;"></div>
+    </div>
+    <!-- predictive -->
+    <div class="plot-wrap" id="wrap-pred">
+      <div class="plot-div" id="plot-pred"></div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button class="ctrl-btn" id="btn-prev">&#9664; Prev</button>
+    <input type="range" id="slider" min="0" value="0" />
+    <span id="sample-label">Sample 1 / —</span>
+    <button class="ctrl-btn" id="btn-next">Next &#9654;</button>
+    <button class="ctrl-btn" id="btn-play">&#9654; Play</button>
+    <div class="speed-row">Speed <input type="range" id="speed" min="40" max="800" value="180" /></div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────── CSV parser ────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const headers = lines[0].split(',').map(h => h.trim());
+  const cols = {};
+  headers.forEach(h => { cols[h] = []; });
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(',');
+    headers.forEach((h, j) => cols[h].push(parseFloat(vals[j])));
+  }
+  return cols;
+}
+
+// ──────────────────────────────── state ─────────────────────────────────────
+let b0, b1, sig, xPred, yDraws, xObs, yObs;
+let nSamples, currentIdx = 0, playTimer = null;
+const N_BG_LINES = 80;
+// trace indices in plot-pred: 0=band, 1=p5 line, 2=p95 line, 3..N_BG_LINES+2=bg, N_BG_LINES+3=highlight, N_BG_LINES+4=obs
+const T_HIGHLIGHT = N_BG_LINES + 3;
+const T_OBS       = N_BG_LINES + 4;
+
+// ──────────────────────────────── localStorage helpers ──────────────────────
+const LS_KEYS = { observed:'ad_obs', samples:'ad_smp', predictive:'ad_pred' };
+
+function trySave(key, text) {
+  try { localStorage.setItem(LS_KEYS[key], text); } catch(e) { /* quota */ }
+}
+function loadCache() {
+  return {
+    observed:   localStorage.getItem(LS_KEYS.observed),
+    samples:    localStorage.getItem(LS_KEYS.samples),
+    predictive: localStorage.getItem(LS_KEYS.predictive),
+  };
+}
+function clearCache() {
+  Object.values(LS_KEYS).forEach(k => localStorage.removeItem(k));
+  document.getElementById('restore-btn').style.display = 'none';
+  document.getElementById('clear-cache').style.display = 'none';
+}
+
+// on load: try auto-fetching from same origin (works on GitHub Pages),
+// fall back to manual file picker if running from file:// or CSVs are missing
+window.addEventListener('load', async () => {
+  const files = ['observed_data.csv', 'posterior_samples.csv', 'posterior_predictive.csv'];
+  const keys  = ['observed', 'samples', 'predictive'];
+  try {
+    const results = await Promise.all(files.map(f => fetch('./' + f)));
+    if (results.every(r => r.ok)) {
+      const texts = await Promise.all(results.map(r => r.text()));
+      keys.forEach((k, i) => {
+        csvTexts[k] = texts[i];
+        markLoaded(k, '✓ ' + files[i]);
+      });
+      document.getElementById('status').textContent = 'Loaded from server — click Visualise.';
+      document.getElementById('load-btn').disabled = false;
+      return;
+    }
+  } catch(e) { /* file:// or network error — fall through to manual picker */ }
+
+  // check localStorage cache
+  const c = loadCache();
+  if (c.observed && c.samples && c.predictive) {
+    document.getElementById('restore-btn').style.display = 'block';
+    document.getElementById('clear-cache').style.display = 'block';
+  }
+});
+
+document.getElementById('restore-btn').addEventListener('click', () => {
+  const c = loadCache();
+  if (c.observed && c.samples && c.predictive) {
+    csvTexts.observed   = c.observed;
+    csvTexts.samples    = c.samples;
+    csvTexts.predictive = c.predictive;
+    markLoaded('observed',   '(from cache)');
+    markLoaded('samples',    '(from cache)');
+    markLoaded('predictive', '(from cache)');
+    checkReady();
+  }
+});
+
+// ──────────────────────────────── file handling ─────────────────────────────
+const csvTexts = { observed: null, samples: null, predictive: null };
+
+function detectKey(filename) {
+  const f = filename.toLowerCase();
+  if (f.includes('observed'))   return 'observed';
+  if (f.includes('sample'))     return 'samples';
+  if (f.includes('predictive')) return 'predictive';
+  return null;
+}
+
+function markLoaded(key, label) {
+  const el = document.getElementById(`st-${key}`);
+  el.textContent = label || '✓ loaded';
+  el.classList.add('ok');
+}
+
+async function ingestFile(file) {
+  const key = detectKey(file.name);
+  if (!key) { alert(`Cannot identify: ${file.name}\nFilename should contain "observed", "samples", or "predictive".`); return; }
+  const text = await file.text();
+  csvTexts[key] = text;
+  trySave(key, text);
+  markLoaded(key, `✓ ${file.name}`);
+  checkReady();
+}
+
+// drag-and-drop on the whole dropzone
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', async e => {
+  e.preventDefault(); dz.classList.remove('over');
+  for (const file of e.dataTransfer.files) await ingestFile(file);
+});
+dz.addEventListener('click', () => document.getElementById('f-observed').click());
+
+['observed','samples','predictive'].forEach(key => {
+  document.getElementById(`f-${key}`).addEventListener('change', async e => {
+    if (e.target.files[0]) await ingestFile(e.target.files[0]);
+  });
+});
+
+function checkReady() {
+  const ready = csvTexts.observed && csvTexts.samples && csvTexts.predictive;
+  document.getElementById('load-btn').disabled = !ready;
+  document.getElementById('status').textContent = ready
+    ? 'Ready — click Visualise.' : 'Load all three files to continue.';
+}
+
+document.getElementById('load-btn').addEventListener('click', () => {
+  try {
+    const obs = parseCSV(csvTexts.observed);
+    const smp = parseCSV(csvTexts.samples);
+    const pp  = parseCSV(csvTexts.predictive);
+
+    xObs = obs['x'];  yObs = obs['y'];
+    b0   = smp['beta_0'];
+    b1   = smp['beta_1'];
+    sig  = smp['sigma'];
+    xPred = pp['x_pred'];
+
+    nSamples = b0.length;
+    const nDrawCols = Object.keys(pp).filter(k => k.startsWith('y_pred_')).length;
+    yDraws = Array.from({length: nDrawCols}, (_, i) => pp[`y_pred_${i}`]);
+
+    document.getElementById('slider').max = nSamples - 1;
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('app').style.display    = 'block';
+
+    buildPlots();
+    goTo(0);
+  } catch(e) {
+    document.getElementById('status').textContent = 'Parse error: ' + e.message;
+  }
+});
+
+// ──────────────────────────────── build plots ───────────────────────────────
+function buildPlots() {
+  const sigMin = Math.min(...sig), sigMax = Math.max(...sig);
+  const base = {
+    margin: { t: 36, b: 44, l: 50, r: 18 },
+    paper_bgcolor: '#fff', plot_bgcolor: '#fafafa', font: { size: 11 },
+  };
+  const cfg = { responsive: true, displayModeBar: false };
+
+  // shared highlight marker style
+  const hlMarker = { color: '#e8003d', size: 14, symbol: 'circle',
+                     line: { color: '#fff', width: 2.5 } };
+
+  // ── β₀ vs β₁ ──
+  Plotly.newPlot('plot-b0b1', [
+    { x: b0, y: b1, mode: 'markers', type: 'scatter',
+      marker: { color: sig, colorscale: 'Viridis', size: 4, opacity: 0.4,
+                cmin: sigMin, cmax: sigMax,
+                colorbar: { title: 'σ', len: 0.65, thickness: 10, x: 1.02 } },
+      name: 'samples', hovertemplate: 'β₀=%{x:.3f}<br>β₁=%{y:.3f}<extra></extra>' },
+    { x: [null], y: [null], mode: 'markers', type: 'scatter',
+      marker: hlMarker, name: 'selected', hoverinfo: 'skip', showlegend: false },
+  ], { ...base, title: { text: 'β₀ vs β₁', font:{size:12} },
+       xaxis: { title: 'β₀' }, yaxis: { title: 'β₁' } }, cfg);
+
+  // ── β₁ vs σ ──
+  Plotly.newPlot('plot-b1sig', [
+    { x: b1, y: sig, mode: 'markers', type: 'scatter',
+      marker: { color: sig, colorscale: 'Viridis', size: 4, opacity: 0.4,
+                cmin: sigMin, cmax: sigMax,
+                colorbar: { title: 'σ', len: 0.65, thickness: 10, x: 1.02 } },
+      name: 'samples', hovertemplate: 'β₁=%{x:.3f}<br>σ=%{y:.3f}<extra></extra>' },
+    { x: [null], y: [null], mode: 'markers', type: 'scatter',
+      marker: hlMarker, name: 'selected', hoverinfo: 'skip', showlegend: false },
+  ], { ...base, title: { text: 'β₁ vs σ', font:{size:12} },
+       xaxis: { title: 'β₁' }, yaxis: { title: 'σ' } }, cfg);
+
+  // ── 3D scatter ──
+  Plotly.newPlot('plot-3d', [
+    { x: b0, y: b1, z: sig, type: 'scatter3d', mode: 'markers',
+      marker: { color: sig, colorscale: 'Viridis', size: 3, opacity: 0.4,
+                cmin: sigMin, cmax: sigMax,
+                colorbar: { title: 'σ', len: 0.6, thickness: 10 } },
+      name: 'samples', hovertemplate: 'β₀=%{x:.3f}<br>β₁=%{y:.3f}<br>σ=%{z:.3f}<extra></extra>' },
+    { x: [null], y: [null], z: [null], type: 'scatter3d', mode: 'markers',
+      marker: { color: '#e8003d', size: 8, symbol: 'circle',
+                line: { color: '#fff', width: 2 } },
+      name: 'selected', hoverinfo: 'skip', showlegend: false },
+  ], { ...base,
+       scene: { xaxis:{title:'β₀'}, yaxis:{title:'β₁'}, zaxis:{title:'σ'} },
+       title: { text: 'Posterior samples (β₀, β₁, σ)', font:{size:12} },
+       margin: { t:40, b:10, l:10, r:10 } }, cfg);
+
+  // ── posterior predictive ──
+  // pre-compute percentiles
+  const lo = [], hi = [], med = [];
+  for (let j = 0; j < xPred.length; j++) {
+    const col = yDraws.map(d => d[j]).sort((a,b) => a-b);
+    lo.push(col[Math.floor(0.05 * col.length)]);
+    hi.push(col[Math.floor(0.95 * col.length)]);
+    med.push(col[Math.floor(0.50 * col.length)]);
+  }
+
+  const predTraces = [];
+
+  // trace 0: filled band
+  predTraces.push({
+    x: [...xPred, ...xPred.slice().reverse()],
+    y: [...hi, ...lo.slice().reverse()],
+    fill: 'toself', fillcolor: 'rgba(255,140,0,0.28)',
+    line: { color: 'transparent' },
+    name: '90% CI', hoverinfo: 'skip',
+  });
+
+  // trace 1: 5th percentile border
+  predTraces.push({
+    x: xPred, y: lo, mode: 'lines',
+    line: { color: 'rgba(200,100,0,0.7)', width: 1.5, dash: 'dot' },
+    name: '5th pct', hoverinfo: 'skip', showlegend: false,
+  });
+
+  // trace 2: 95th percentile border
+  predTraces.push({
+    x: xPred, y: hi, mode: 'lines',
+    line: { color: 'rgba(200,100,0,0.7)', width: 1.5, dash: 'dot' },
+    name: '95th pct', hoverinfo: 'skip', showlegend: false,
+  });
+
+  // traces 3 .. N_BG_LINES+2: background lines
+  const step = Math.max(1, Math.floor(yDraws.length / N_BG_LINES));
+  for (let i = 0; i < yDraws.length && predTraces.length - 3 < N_BG_LINES; i += step) {
+    predTraces.push({
+      x: xPred, y: yDraws[i], mode: 'lines',
+      line: { color: 'rgba(200,120,0,0.15)', width: 1 },
+      showlegend: false, hoverinfo: 'skip',
+    });
+  }
+  // pad to stable index
+  while (predTraces.length - 3 < N_BG_LINES) {
+    predTraces.push({ x:[], y:[], mode:'lines',
+                      line:{color:'transparent',width:0},
+                      showlegend:false, hoverinfo:'skip' });
+  }
+
+  // trace T_HIGHLIGHT: highlighted draw
+  predTraces.push({
+    x: xPred, y: Array(xPred.length).fill(null), mode: 'lines',
+    line: { color: '#e8003d', width: 2.5 },
+    name: 'selected draw', hoverinfo: 'skip',
+  });
+
+  // trace T_OBS: observed data
+  predTraces.push({
+    x: xObs, y: yObs, mode: 'markers', type: 'scatter',
+    marker: { color: 'steelblue', size: 9, line: { color: '#fff', width: 1.5 } },
+    name: 'observed',
+    hovertemplate: 'x=%{x:.2f}<br>y=%{y:.2f}<extra></extra>',
+  });
+
+  Plotly.newPlot('plot-pred', predTraces, {
+    ...base,
+    title: { text: 'Posterior Predictive', font:{size:12} },
+    xaxis: { title: 'x', zeroline: false },
+    yaxis: { title: 'y', zeroline: false },
+    legend: { orientation: 'h', x: 0, y: 1.10, font:{size:10} },
+    margin: { ...base.margin, t: 50 },
+  }, cfg);
+}
+
+// ──────────────────────────────── go to sample i ────────────────────────────
+function goTo(i) {
+  currentIdx = ((i % nSamples) + nSamples) % nSamples;
+
+  Plotly.restyle('plot-b0b1',  { x: [[b0[currentIdx]]], y: [[b1[currentIdx]]] },  [1]);
+  Plotly.restyle('plot-b1sig', { x: [[b1[currentIdx]]], y: [[sig[currentIdx]]] }, [1]);
+  Plotly.restyle('plot-3d',    { x: [[b0[currentIdx]]], y: [[b1[currentIdx]]],
+                                  z: [[sig[currentIdx]]] }, [1]);
+  Plotly.restyle('plot-pred',  { y: [yDraws[currentIdx]] }, [T_HIGHLIGHT]);
+
+  document.getElementById('slider').value = currentIdx;
+  document.getElementById('sample-label').textContent =
+    `Sample ${currentIdx + 1} / ${nSamples}`;
+}
+
+// ──────────────────────────────── scatter mode toggle ───────────────────────
+function setScatterMode(mode) {
+  document.getElementById('wrap-scatter2d').style.display = mode==='2d' ? 'flex'  : 'none';
+  document.getElementById('wrap-scatter3d').style.display = mode==='3d' ? 'block' : 'none';
+  document.getElementById('btn-2d').classList.toggle('active', mode==='2d');
+  document.getElementById('btn-3d').classList.toggle('active', mode==='3d');
+  if (mode==='3d') Plotly.relayout('plot-3d', {});  // trigger resize
+}
+
+// ──────────────────────────────── controls ───────────────────────────────────
+document.getElementById('btn-prev').addEventListener('click',  () => { stopPlay(); goTo(currentIdx - 1); });
+document.getElementById('btn-next').addEventListener('click',  () => { stopPlay(); goTo(currentIdx + 1); });
+document.getElementById('slider').addEventListener('input', e => { stopPlay(); goTo(parseInt(e.target.value)); });
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  playTimer ? stopPlay() : startPlay();
+});
+
+function startPlay() {
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '⏸ Pause'; btn.style.background = '#555';
+  const ms = () => 840 - parseInt(document.getElementById('speed').value);
+  playTimer = setInterval(() => goTo(currentIdx + 1), ms());
+  document.getElementById('speed').oninput = () => {
+    if (playTimer) { clearInterval(playTimer); playTimer = setInterval(() => goTo(currentIdx + 1), ms()); }
+  };
+}
+function stopPlay() {
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '▶ Play'; btn.style.background = '#0071e3';
+}
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('app').style.display || document.getElementById('app').style.display==='none') return;
+  if (e.key==='ArrowLeft')  { stopPlay(); goTo(currentIdx - 1); }
+  if (e.key==='ArrowRight') { stopPlay(); goTo(currentIdx + 1); }
+  if (e.key===' ')          { e.preventDefault(); document.getElementById('btn-play').click(); }
+});
+</script>
+</body>
+</html>
