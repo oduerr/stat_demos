@@ -201,12 +201,42 @@ function parseCSV(text) {
 }
 
 // ──────────────────────────────── state ─────────────────────────────────────
-let b0, b1, sig, xPred, yDraws, xObs, yObs;
+let b0, b1, sig, logLik, xPred, yDraws, xObs, yObs;
 let nSamples, currentIdx = 0, playTimer = null;
 const N_BG_LINES = 80;
+// trace indices in 2D scatter plots: 0=contour, 1=scatter_all, 2=highlight
+const T2D_CONTOUR = 0, T2D_SCATTER = 1, T2D_HL = 2;
 // trace indices in plot-pred: 0=band, 1=p5 line, 2=p95 line, 3..N_BG_LINES+2=bg, N_BG_LINES+3=highlight, N_BG_LINES+4=obs
 const T_HIGHLIGHT = N_BG_LINES + 3;
 const T_OBS       = N_BG_LINES + 4;
+
+// ──────────────────────────────── log-lik grid helper ───────────────────────
+function linspace(a, b, n) {
+  return Array.from({length: n}, (_, i) => a + (b - a) * i / (n - 1));
+}
+
+function logLikGrid(xObs, yObs, axis1Vals, axis2Vals, fixed, mode) {
+  // mode 'b0b1': axis1=β₀, axis2=β₁, fixed=σ
+  // mode 'b1sig': axis1=β₁, axis2=σ,  fixed=β₀
+  const z = [];
+  for (let j = 0; j < axis2Vals.length; j++) {
+    const row = [];
+    for (let i = 0; i < axis1Vals.length; i++) {
+      let b0v, b1v, sv;
+      if (mode === 'b0b1') { b0v = axis1Vals[i]; b1v = axis2Vals[j]; sv = fixed; }
+      else                 { b0v = fixed; b1v = axis1Vals[i]; sv = axis2Vals[j]; }
+      let ll = 0;
+      const log2pi = Math.log(2 * Math.PI);
+      for (let n = 0; n < xObs.length; n++) {
+        const r = yObs[n] - (b0v + b1v * xObs[n]);
+        ll += -0.5 * log2pi - Math.log(sv) - r * r / (2 * sv * sv);
+      }
+      row.push(ll);
+    }
+    z.push(row);
+  }
+  return z;
+}
 
 // ──────────────────────────────── localStorage helpers ──────────────────────
 const LS_KEYS = { observed:'ad_obs', samples:'ad_smp', predictive:'ad_pred' };
@@ -324,10 +354,11 @@ document.getElementById('load-btn').addEventListener('click', () => {
     const pp  = parseCSV(csvTexts.predictive);
 
     xObs = obs['x'];  yObs = obs['y'];
-    b0   = smp['beta_0'];
-    b1   = smp['beta_1'];
-    sig  = smp['sigma'];
-    xPred = pp['x_pred'];
+    b0     = smp['beta_0'];
+    b1     = smp['beta_1'];
+    sig    = smp['sigma'];
+    logLik = smp['log_lik'];
+    xPred  = pp['x_pred'];
 
     nSamples = b0.length;
     const nDrawCols = Object.keys(pp).filter(k => k.startsWith('y_pred_')).length;
@@ -346,47 +377,74 @@ document.getElementById('load-btn').addEventListener('click', () => {
 
 // ──────────────────────────────── build plots ───────────────────────────────
 function buildPlots() {
-  const sigMin = Math.min(...sig), sigMax = Math.max(...sig);
+  const llMin = Math.min(...logLik), llMax = Math.max(...logLik);
+  const sigMean = sig.reduce((a,v) => a+v, 0) / sig.length;
+  const b0Mean  = b0.reduce((a,v)  => a+v, 0) / b0.length;
   const base = {
     margin: { t: 36, b: 44, l: 50, r: 18 },
     paper_bgcolor: '#fff', plot_bgcolor: '#fafafa', font: { size: 11 },
   };
   const cfg = { responsive: true, displayModeBar: false };
-
-  // shared highlight marker style
   const hlMarker = { color: '#e8003d', size: 14, symbol: 'circle',
                      line: { color: '#fff', width: 2.5 } };
+  const scatterMarker = (colorArr) => ({
+    color: colorArr, colorscale: 'RdYlBu', reversescale: true,
+    size: 4, opacity: 0.5, cmin: llMin, cmax: llMax,
+    colorbar: { title: 'log p', len: 0.65, thickness: 10, x: 1.02 },
+  });
 
-  // ── β₀ vs β₁ ──
+  // ── β₀ vs β₁ — with log-lik level sets ──
+  const pad = 0.15;
+  const b0min = Math.min(...b0), b0max = Math.max(...b0);
+  const b1min = Math.min(...b1), b1max = Math.max(...b1);
+  const b0g = linspace(b0min - pad*(b0max-b0min), b0max + pad*(b0max-b0min), 50);
+  const b1g = linspace(b1min - pad*(b1max-b1min), b1max + pad*(b1max-b1min), 50);
+  const zb0b1 = logLikGrid(xObs, yObs, b0g, b1g, sigMean, 'b0b1');
+
   Plotly.newPlot('plot-b0b1', [
+    // T2D_CONTOUR = 0: level sets
+    { x: b0g, y: b1g, z: zb0b1, type: 'contour',
+      colorscale: 'RdYlBu', reversescale: true,
+      contours: { coloring: 'lines', showlabels: false, ncontours: 12 },
+      line: { width: 1.2 }, showscale: false, opacity: 0.7,
+      hoverinfo: 'skip', name: 'log-lik contours' },
+    // T2D_SCATTER = 1: all samples coloured by log-lik
     { x: b0, y: b1, mode: 'markers', type: 'scatter',
-      marker: { color: sig, colorscale: 'Viridis', size: 4, opacity: 0.4,
-                cmin: sigMin, cmax: sigMax,
-                colorbar: { title: 'σ', len: 0.65, thickness: 10, x: 1.02 } },
+      marker: scatterMarker(logLik),
       name: 'samples', hovertemplate: 'β₀=%{x:.3f}<br>β₁=%{y:.3f}<extra></extra>' },
+    // T2D_HL = 2: highlight
     { x: [null], y: [null], mode: 'markers', type: 'scatter',
       marker: hlMarker, name: 'selected', hoverinfo: 'skip', showlegend: false },
-  ], { ...base, title: { text: 'β₀ vs β₁', font:{size:12} },
+  ], { ...base, title: { text: 'β₀ vs β₁  (colour = log p(y|θ), σ fixed at mean)', font:{size:11} },
        xaxis: { title: 'β₀' }, yaxis: { title: 'β₁' } }, cfg);
 
-  // ── β₁ vs σ ──
+  // ── β₁ vs σ — with log-lik level sets ──
+  const sigmin = Math.min(...sig), sigmax = Math.max(...sig);
+  const b1g2  = linspace(b1min - pad*(b1max-b1min), b1max + pad*(b1max-b1min), 50);
+  const sigg  = linspace(Math.max(0.01, sigmin - pad*(sigmax-sigmin)),
+                          sigmax + pad*(sigmax-sigmin), 50);
+  const zb1sig = logLikGrid(xObs, yObs, b1g2, sigg, b0Mean, 'b1sig');
+
   Plotly.newPlot('plot-b1sig', [
+    { x: b1g2, y: sigg, z: zb1sig, type: 'contour',
+      colorscale: 'RdYlBu', reversescale: true,
+      contours: { coloring: 'lines', showlabels: false, ncontours: 12 },
+      line: { width: 1.2 }, showscale: false, opacity: 0.7,
+      hoverinfo: 'skip', name: 'log-lik contours' },
     { x: b1, y: sig, mode: 'markers', type: 'scatter',
-      marker: { color: sig, colorscale: 'Viridis', size: 4, opacity: 0.4,
-                cmin: sigMin, cmax: sigMax,
-                colorbar: { title: 'σ', len: 0.65, thickness: 10, x: 1.02 } },
+      marker: scatterMarker(logLik),
       name: 'samples', hovertemplate: 'β₁=%{x:.3f}<br>σ=%{y:.3f}<extra></extra>' },
     { x: [null], y: [null], mode: 'markers', type: 'scatter',
       marker: hlMarker, name: 'selected', hoverinfo: 'skip', showlegend: false },
-  ], { ...base, title: { text: 'β₁ vs σ', font:{size:12} },
+  ], { ...base, title: { text: 'β₁ vs σ  (colour = log p(y|θ), β₀ fixed at mean)', font:{size:11} },
        xaxis: { title: 'β₁' }, yaxis: { title: 'σ' } }, cfg);
 
-  // ── 3D scatter ──
+  // ── 3D scatter — coloured by log-lik, more transparent ──
   Plotly.newPlot('plot-3d', [
     { x: b0, y: b1, z: sig, type: 'scatter3d', mode: 'markers',
-      marker: { color: sig, colorscale: 'Viridis', size: 3, opacity: 0.4,
-                cmin: sigMin, cmax: sigMax,
-                colorbar: { title: 'σ', len: 0.6, thickness: 10 } },
+      marker: { color: logLik, colorscale: 'RdYlBu', reversescale: true,
+                size: 3, opacity: 0.15, cmin: llMin, cmax: llMax,
+                colorbar: { title: 'log p', len: 0.6, thickness: 10 } },
       name: 'samples', hovertemplate: 'β₀=%{x:.3f}<br>β₁=%{y:.3f}<br>σ=%{z:.3f}<extra></extra>' },
     { x: [null], y: [null], z: [null], type: 'scatter3d', mode: 'markers',
       marker: { color: '#e8003d', size: 8, symbol: 'circle',
@@ -394,7 +452,7 @@ function buildPlots() {
       name: 'selected', hoverinfo: 'skip', showlegend: false },
   ], { ...base,
        scene: { xaxis:{title:'β₀'}, yaxis:{title:'β₁'}, zaxis:{title:'σ'} },
-       title: { text: 'Posterior samples (β₀, β₁, σ)', font:{size:12} },
+       title: { text: 'Posterior samples (colour = log p(y|θ))', font:{size:12} },
        margin: { t:40, b:10, l:10, r:10 } }, cfg);
 
   // ── posterior predictive ──
@@ -477,8 +535,8 @@ function buildPlots() {
 function goTo(i) {
   currentIdx = ((i % nSamples) + nSamples) % nSamples;
 
-  Plotly.restyle('plot-b0b1',  { x: [[b0[currentIdx]]], y: [[b1[currentIdx]]] },  [1]);
-  Plotly.restyle('plot-b1sig', { x: [[b1[currentIdx]]], y: [[sig[currentIdx]]] }, [1]);
+  Plotly.restyle('plot-b0b1',  { x: [[b0[currentIdx]]], y: [[b1[currentIdx]]] },  [T2D_HL]);
+  Plotly.restyle('plot-b1sig', { x: [[b1[currentIdx]]], y: [[sig[currentIdx]]] }, [T2D_HL]);
   Plotly.restyle('plot-3d',    { x: [[b0[currentIdx]]], y: [[b1[currentIdx]]],
                                   z: [[sig[currentIdx]]] }, [1]);
   Plotly.restyle('plot-pred',  { y: [yDraws[currentIdx]] }, [T_HIGHLIGHT]);

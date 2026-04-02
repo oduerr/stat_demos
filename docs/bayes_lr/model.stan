@@ -20,6 +20,9 @@ model {
   y ~ normal(beta_0 + beta_1 * x, sigma);
 }
 generated quantities {
+  // Log-likelihood of the training data
+  real log_lik = normal_lpdf(y | beta_0 + beta_1 * x, sigma);
+
   // Posterior predictive samples at prediction grid
   vector[N_pred] y_pred;
   for (i in 1:N_pred)

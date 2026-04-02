@@ -7,7 +7,7 @@ Bayesian posterior, and plots both side by side.
 Outputs
 -------
 observed_data.csv          columns: x, y
-posterior_samples.csv      columns: beta_0, beta_1, sigma
+posterior_samples.csv      columns: beta_0, beta_1, sigma, log_lik
 posterior_predictive.csv   columns: x_pred, y_pred_0, y_pred_1, ... (one col per draw)
 
 Usage:
@@ -64,6 +64,7 @@ print(fit.summary()[["Mean", "StdDev", "R_hat"]].loc[["beta_0", "beta_1", "sigma
 b0_samples    = fit.stan_variable("beta_0")    # (4000,)
 b1_samples    = fit.stan_variable("beta_1")
 sigma_samples = fit.stan_variable("sigma")
+loglik_samples = fit.stan_variable("log_lik")  # (4000,)
 y_pred_all    = fit.stan_variable("y_pred")    # (4000, 200)
 
 # ── 4. Save CSVs ─────────────────────────────────────────────────────────────
@@ -74,9 +75,10 @@ print("Saved observed_data.csv")
 
 # posterior samples (all draws)
 pd.DataFrame({
-    "beta_0": b0_samples,
-    "beta_1": b1_samples,
-    "sigma":  sigma_samples,
+    "beta_0":  b0_samples,
+    "beta_1":  b1_samples,
+    "sigma":   sigma_samples,
+    "log_lik": loglik_samples,
 }).to_csv("posterior_samples.csv", index=False)
 print("Saved posterior_samples.csv")
 

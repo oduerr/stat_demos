@@ -2,3 +2,7 @@
 *.pyc
 /animations/cdf_two_pdf/media
 /animations/media
+
+docs/bayes_lr/model
+docs/bayes_lr/model_*
+docs/bayes_lr/__pycache__/
