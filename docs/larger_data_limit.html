@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bernstein–von Mises — non-Gaussian posterior (1-D)</title>
+<style>
+  :root {
+    --bg:#0f1117; --panel:#1a1d27; --panel2:#232735; --ink:#e8eaf0; --muted:#9aa0b4;
+    --accent:#6c8cff; --accent2:#ff6b8a; --gold:#ffc857; --green:#4fd6a3;
+    --grid:#2c3142; --border:#313748;
+    /* canvas-only roles (overridden in lecture mode) */
+    --true:#ffffff; --rug:255,107,138; --leak:255,107,138; --fill:108,140,255;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
+  h1 .sub { color:var(--accent); }
+  .lead { color:var(--muted); font-size:13px; margin:0 0 18px; max-width:780px; line-height:1.5; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:16px; }
+  canvas { display:block; width:100%; border-radius:8px; background:var(--panel2); }
+  .controls { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:16px; }
+  .ctrl { display:flex; flex-direction:column; gap:6px; min-width:200px; flex:1; }
+  .ctrl label { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .ctrl label b { color:var(--gold); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .btns { display:flex; gap:8px; }
+  button.play { background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+  button.play:hover { background:#5a7bff; }
+  button.ghost:hover { color:var(--ink); }
+  button.ghost.on { background:var(--gold); color:#1a1d27; border-color:var(--gold); font-weight:600; }
+  /* lecture toggle pinned to the upper-right corner */
+  #lectureBtn { position:fixed; top:20px; right:24px; z-index:20; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:14px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .swatch { width:14px; height:3px; border-radius:2px; display:inline-block; }
+  .stats { display:flex; gap:24px; flex-wrap:wrap; margin-top:14px; font-size:13px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; }
+  .stat .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+  .stat .v { font-size:16px; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .note { font-size:12px; color:var(--muted); line-height:1.55; margin-top:10px; }
+  .note b { color:var(--ink); }
+  .formula { font-family:"Cambria Math",Georgia,serif; color:var(--ink); background:var(--panel2);
+    border:1px solid var(--border); border-radius:8px; padding:10px 14px; display:inline-block; font-size:14px; margin-top:6px; }
+
+  /* ───────── Lecture mode: high-contrast white for bad projectors ───────── */
+  body.lecture {
+    --bg:#ffffff; --panel:#ffffff; --panel2:#ffffff; --ink:#000000; --muted:#1c1c1c;
+    --accent:#0033cc; --accent2:#c2185b; --gold:#b34700; --green:#0a7d52;
+    --grid:#cfcfcf; --border:#888;
+    --true:#000000; --rug:194,24,91; --leak:194,24,91; --fill:0,51,204;
+  }
+  body.lecture h1 { font-size:30px; }
+  body.lecture h1 .sub { color:var(--accent); }
+  body.lecture .lead { font-size:17px; color:#222; max-width:980px; }
+  body.lecture .ctrl label { font-size:16px; }
+  body.lecture .legend { font-size:16px; }
+  body.lecture .stat .k { font-size:13px; }
+  body.lecture .stat .v { font-size:22px; }
+  body.lecture .note { font-size:15px; }
+  body.lecture .formula { font-size:18px; }
+  body.lecture button.play, body.lecture button.ghost { font-size:16px; padding:10px 22px; }
+  body.lecture button.ghost.on { background:var(--gold); color:#fff; border-color:var(--gold); }
+</style>
+</head>
+<body>
+
+<button class="ghost" id="lectureBtn" aria-pressed="false">Lecture mode</button>
+
+<h1>Bernstein–von Mises <span class="sub">— watching skew dissolve into a Gaussian</span></h1>
+<p class="lead">The finite-<i>n</i> posterior is genuinely non-Gaussian: a skewed, positively-bounded Gamma on the rate θ. The gold BvM Gaussian is <i>wrong</i> at small <i>n</i> (it leaks past the boundary at 0) and becomes right as <i>n</i>→∞. Slide <i>n</i> up to 100 000 to watch both <b>concentrate on the true θ₀</b> (consistency). Drag <i>n</i> or hit play.</p>
+
+<!-- ===================== 1D Gamma ===================== -->
+<div id="d1" class="card">
+  <canvas id="c1" width="900" height="430"></canvas>
+  <div class="controls">
+    <div class="ctrl">
+      <label>sample size <b id="n1lab">n = 3</b></label>
+      <input id="n1" type="range" min="0" max="100" step="0.5" value="3">
+    </div>
+    <div class="btns">
+      <button class="play" id="play1">▶ Play</button>
+      <button class="ghost" id="reset1">↺ New data</button>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--accent)"></i> exact posterior (Gamma)</span>
+    <span><i class="swatch" style="background:var(--gold)"></i> BvM Gaussian 𝒩(θ̂, 1/(n·I))</span>
+    <span><i class="swatch" style="background:var(--green);width:2px;height:14px"></i> MLE point estimate θ̂</span>
+    <span><i class="swatch" style="background:var(--ink);width:2px;height:14px"></i> true θ₀</span>
+    <span><i class="swatch" style="background:rgba(255,107,138,0.5);width:14px;height:10px;border-radius:2px"></i> BvM mass below 0</span>
+    <span><i class="swatch" style="background:rgba(255,107,138,0.75);width:2px;height:10px"></i> data yᵢ (tics)</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="k">θ̂ (MLE)</div><div class="v" id="mle1">–</div></div>
+    <div class="stat"><div class="k">posterior skewness</div><div class="v" id="skew1">–</div></div>
+    <div class="stat"><div class="k">BvM mass below 0</div><div class="v" id="leak1">–</div></div>
+    <div class="stat"><div class="k">n·I(θ₀)</div><div class="v" id="info1">–</div></div>
+  </div>
+  <p class="formula">yᵢ ~ Gamma(shape k=2, rate θ),&nbsp; prior θ ~ Gamma(α=2, β=1) &nbsp;⟹&nbsp; posterior θ | y ~ Gamma(kn+α, Σyᵢ+β),&nbsp; I(θ₀)=k/θ₀²</p>
+  <p class="note">At <b>n = 0</b> the posterior is just the prior Gamma(2, 1). The exact posterior (blue) is <b>right-skewed and lives only on θ&gt;0</b>. The BvM Gaussian (gold) is symmetric and spills below zero — visibly <b>wrong</b> at small n (red region = mass placed below 0, where the rate can't go). As n grows the Gamma's skewness <b>2/√(kn+α) → 0</b>; blue and gold merge, the mass below 0 vanishes, and both collapse onto θ₀. That convergence <i>is</i> BvM.</p>
+</div>
+
+<script>
+function gaussRand(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function normpdf(x,m,s){ return Math.exp(-0.5*((x-m)/s)**2)/(s*Math.sqrt(2*Math.PI)); }
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function lgamma(z){ // Lanczos
+  const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+    -176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-lgamma(1-z);
+  z-=1; let a=c[0]; const t=z+g+0.5;
+  for(let i=1;i<g+2;i++) a+=c[i]/(z+i);
+  return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(a);
+}
+function gammapdf(x,shape,rate){ if(x<=0)return 0;
+  return Math.exp(shape*Math.log(rate)+(shape-1)*Math.log(x)-rate*x-lgamma(shape)); }
+function erf(x){ const s=x<0?-1:1; x=Math.abs(x);
+  const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return s*y; }
+function normcdf(x,m,s){ return 0.5*(1+erf((x-m)/(s*Math.SQRT2))); }
+function lectureOn(){ return document.body.classList.contains('lecture'); }
+function rgba(varName,a){ return `rgba(${getCss(varName)},${a})`; }
+
+// slider position (0..100) -> sample size n: linear 0..10, then logarithmic to 100 000
+function nFromSlider(v){
+  v=+v;
+  if(v<=10) return Math.round(v);
+  return Math.round(10*Math.pow(10,(v-10)/90*4));   // v=10 -> 10, v=100 -> 100000
+}
+
+// ===================== 1D Gamma =====================
+const c1=document.getElementById('c1'), x1=c1.getContext('2d');
+const TRUE1=1.5;            // true rate theta0
+const KSHAPE=2.0;          // known shape k of each obs
+const PA=2.0, PB=1.0;      // proper Gamma(α,β) prior on rate; n=0 shows the prior itself
+const NMAX=100000;         // pre-generated data pool
+const NS=4000;             // curve sampling resolution (fine enough to render the spike)
+// fixed plot window — stays put while sliding
+const XMIN=-1.2, XMAX=6;
+let data1=[], prefix1=[0]; // prefix1[i] = sum of first i observations (O(1) Σyᵢ)
+function gammaSample(k){ // Marsaglia-Tsang, shape k>=1; rate=TRUE1
+  // sample Gamma(shape=k, rate=TRUE1) = Gamma(k,1)/TRUE1
+  if(k<1){ const u=Math.random(); return gammaSample(k+1)*Math.pow(u,1/k); }
+  const d=k-1/3, c=1/Math.sqrt(9*d);
+  while(true){ let xg,v; do{ xg=gaussRand(); v=1+c*xg; }while(v<=0); v=v*v*v;
+    const u=Math.random();
+    if(u<1-0.0331*xg*xg*xg*xg) return d*v/TRUE1;
+    if(Math.log(u)<0.5*xg*xg+d*(1-v+Math.log(v))) return d*v/TRUE1; }
+}
+function genData1(){ data1=new Array(NMAX); prefix1=new Float64Array(NMAX+1);
+  for(let i=0;i<NMAX;i++){ data1[i]=gammaSample(KSHAPE); prefix1[i+1]=prefix1[i]+data1[i]; } }
+genData1();
+
+function draw1(n){
+  const LM=lectureOn();
+  const fGrid = LM?'16px system-ui':'11px system-ui';
+  const fAnno = LM?'18px system-ui':'13px system-ui';
+  const lwCurve = LM?4:2.5;
+  const lwTrue  = LM?3:2;
+  const lwRug   = LM?2.5:1.5;
+
+  const W=c1.width,H=c1.height,P=46;
+  x1.clearRect(0,0,W,H);
+  const sumy=prefix1[n];
+  const postShape=KSHAPE*n+PA, postRate=sumy+PB;
+  const postMean=postShape/postRate;
+  const postVar=postShape/(postRate*postRate);
+  const postSkew=2/Math.sqrt(postShape);
+  // MLE of rate = k*n / sumy; Fisher info per obs = k/theta0^2. Undefined at n=0.
+  const haveData = n>0;
+  const mle = haveData ? KSHAPE*n/sumy : NaN;
+  const bvmS=Math.sqrt(postVar);
+  const center = haveData ? mle : postMean;   // gaussian mean
+
+  // fixed axis
+  const xmin=XMIN, xmax=XMAX;
+  const X=v=>P+(v-xmin)/(xmax-xmin)*(W-2*P);
+  // peak (sample finely so a thin spike is captured)
+  let peak=0; for(let i=0;i<=NS;i++){ const xv=xmin+i/NS*(xmax-xmin);
+    peak=Math.max(peak,gammapdf(xv,postShape,postRate)); }
+  peak=Math.max(peak, normpdf(center,center,bvmS));
+  const yscale=(H-2*P-10)/peak; const Y=p=>H-P-p*yscale;
+
+  // grid
+  x1.strokeStyle=getCss('--grid'); x1.lineWidth=1; x1.font=fGrid;
+  x1.fillStyle=getCss('--muted'); x1.textAlign='center';
+  for(let g=Math.ceil(xmin);g<=Math.floor(xmax);g++){ x1.beginPath(); x1.moveTo(X(g),P-6); x1.lineTo(X(g),H-P); x1.stroke();
+    x1.fillText(g,X(g),H-P+18); }
+  x1.fillText('θ (rate)', W-P+2, H-P+18);
+  // zero line emphasis
+  x1.strokeStyle=getCss('--muted'); x1.lineWidth=1.5; x1.beginPath(); x1.moveTo(X(0),P-6); x1.lineTo(X(0),H-P); x1.stroke();
+
+  // BvM gaussian fill of the mass-below-0 part (only when data exists)
+  if(haveData){
+    x1.beginPath();
+    for(let px=P;px<=X(0);px+=2){ const xv=xmin+(px-P)/(W-2*P)*(xmax-xmin);
+      const py=Y(normpdf(xv,center,bvmS)); if(px===P)x1.moveTo(px,py); else x1.lineTo(px,py); }
+    x1.lineTo(X(0),H-P); x1.lineTo(X(xmin),H-P); x1.closePath();
+    x1.fillStyle=rgba('--leak',0.30); x1.fill();
+  }
+
+  // helpers that sample uniformly in θ at high resolution
+  function fillCurve(fn,style){ x1.beginPath();
+    for(let i=0;i<=NS;i++){ const xv=xmin+i/NS*(xmax-xmin); const px=X(xv); const py=Y(fn(xv));
+      if(i===0)x1.moveTo(px,py); else x1.lineTo(px,py); }
+    x1.lineTo(X(xmax),H-P); x1.lineTo(X(xmin),H-P); x1.closePath(); x1.fillStyle=style; x1.fill(); }
+  function curve(fn,color,w,dash){ x1.beginPath(); x1.strokeStyle=color; x1.lineWidth=w; x1.setLineDash(dash||[]);
+    for(let i=0;i<=NS;i++){ const xv=xmin+i/NS*(xmax-xmin); const px=X(xv); const py=Y(fn(xv));
+      if(i===0)x1.moveTo(px,py); else x1.lineTo(px,py); }
+    x1.stroke(); x1.setLineDash([]); }
+
+  // posterior fill + curves
+  fillCurve(xv=>gammapdf(xv,postShape,postRate), rgba('--fill',0.12));
+  if(haveData) curve(xv=>normpdf(xv,center,bvmS),getCss('--gold'),lwCurve,[7,5]);
+  curve(xv=>gammapdf(xv,postShape,postRate),getCss('--accent'),lwCurve);
+
+  // annotate n=0 as the prior
+  if(!haveData){
+    x1.fillStyle=getCss('--accent'); x1.textAlign='left'; x1.font=fAnno;
+    x1.fillText('n = 0 : posterior = prior  Gamma(2, 1)', P+10, P+8);
+  }
+
+  // MLE point estimate θ̂ — centre of the BvM Gaussian; converges to θ₀
+  if(haveData && mle>=xmin && mle<=xmax){
+    x1.strokeStyle=getCss('--green'); x1.lineWidth=lwTrue; x1.setLineDash([2,3]);
+    x1.beginPath(); x1.moveTo(X(mle),P-6); x1.lineTo(X(mle),H-P); x1.stroke(); x1.setLineDash([]);
+    // dot at the Gaussian apex
+    x1.fillStyle=getCss('--green'); x1.beginPath();
+    x1.arc(X(mle), Y(normpdf(center,center,bvmS)), LM?6:4, 0, 7); x1.fill();
+  }
+
+  // true theta0
+  x1.strokeStyle=getCss('--true'); x1.lineWidth=lwTrue; x1.setLineDash([3,4]);
+  x1.beginPath(); x1.moveTo(X(TRUE1),P-6); x1.lineTo(X(TRUE1),H-P); x1.stroke(); x1.setLineDash([]);
+
+  // data rug: observed yᵢ as tics on the axis — only at small n so it stays readable
+  if(haveData && n<=100){
+    x1.strokeStyle=rgba('--rug',0.8); x1.lineWidth=lwRug;
+    for(let i=0;i<n;i++){ const d=data1[i]; if(d>=xmin&&d<=xmax){ x1.beginPath(); x1.moveTo(X(d),H-P); x1.lineTo(X(d),H-P-9); x1.stroke(); } }
+  }
+
+  const leak = haveData ? normcdf(0,center,bvmS) : 0;
+  document.getElementById('mle1').textContent = haveData ? mle.toFixed(3) : '— (no data)';
+  document.getElementById('skew1').textContent=postSkew.toFixed(3);
+  document.getElementById('leak1').textContent = haveData ? (leak*100).toFixed(2)+'%' : '—';
+  document.getElementById('info1').textContent=(n*KSHAPE/(TRUE1*TRUE1)).toLocaleString(undefined,{maximumFractionDigits:0});
+}
+
+// ---------- wiring ----------
+const n1=document.getElementById('n1');
+function setLabel(n){ document.getElementById('n1lab').textContent='n = '+n.toLocaleString(); }
+n1.oninput=()=>{ const n=nFromSlider(n1.value); setLabel(n); draw1(n); };
+document.getElementById('reset1').onclick=()=>{ genData1(); draw1(nFromSlider(n1.value)); };
+
+// lecture-mode toggle: high-contrast white theme + redraw
+const lectureBtn=document.getElementById('lectureBtn');
+lectureBtn.onclick=()=>{
+  const on=document.body.classList.toggle('lecture');
+  lectureBtn.classList.toggle('on',on);
+  lectureBtn.setAttribute('aria-pressed',String(on));
+  draw1(nFromSlider(n1.value));
+};
+
+// play: sweep the slider position 0 -> 100 (linear-then-log in n)
+let anim1=null;
+document.getElementById('play1').onclick=function(){
+  const btn=this;
+  if(anim1){ clearInterval(anim1); anim1=null; btn.textContent='▶ Play'; return; }
+  let pos=0; n1.value=0; setLabel(0); draw1(0);
+  btn.textContent='⏸ Pause';
+  anim1=setInterval(()=>{
+    pos+=0.7; if(pos>=100)pos=100;
+    n1.value=pos; const n=nFromSlider(pos); setLabel(n); draw1(n);
+    if(pos>=100){ clearInterval(anim1); anim1=null; btn.textContent='▶ Play'; }
+  },55);
+};
+
+setLabel(3); draw1(3);
+</script>
+</body>
+</html>
