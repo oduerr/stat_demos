@@ -101,11 +101,13 @@ y_pred_hi   = np.percentile(y_pred_sub, 95, axis=0)
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 fig.suptitle("1D Linear Regression: MLE vs. Bayesian", fontsize=14)
 
+z90 = 1.6449                        # 90 % PI → 5 % each tail
 ax = axes[0]
 ax.scatter(x, y, color="steelblue", zorder=3, label="data")
-ax.plot(x_pred, y_mle, color="crimson", linewidth=2, label="MLE fit")
-ax.fill_between(x_pred, y_mle - 2*sigma_mle, y_mle + 2*sigma_mle,
-                color="crimson", alpha=0.15, label="±2σ (MLE)")
+ax.plot(x_pred, y_mle, color="crimson", linewidth=2,
+        label=r"$\mathbb{E}[y \mid x]$")
+ax.fill_between(x_pred, y_mle - z90 * sigma_mle, y_mle + z90 * sigma_mle,
+                color="crimson", alpha=0.15, label="90 % PI")
 ax.set_title("Maximum Likelihood")
 ax.set_xlabel("x"); ax.set_ylabel("y"); ax.legend(fontsize=9)
 
@@ -114,13 +116,37 @@ ax.scatter(x, y, color="steelblue", zorder=3, label="data")
 for i in range(min(80, N_PRED_SAMPLES)):
     ax.plot(x_pred, b0_samples[idx[i]] + b1_samples[idx[i]] * x_pred,
             color="orange", alpha=0.06, linewidth=0.8)
-ax.plot(x_pred, y_pred_mean, color="darkorange", linewidth=2, label="posterior mean")
+ax.plot(x_pred, y_pred_mean, color="darkorange", linewidth=2,
+        label=r"$\mathbb{E}[y \mid x]$")
 ax.fill_between(x_pred, y_pred_lo, y_pred_hi,
-                color="darkorange", alpha=0.25, label="90% posterior predictive")
+                color="darkorange", alpha=0.25, label="90 % PI")
 ax.set_title("Bayesian (Stan)")
 ax.set_xlabel("x"); ax.legend(fontsize=9)
 
 plt.tight_layout()
 plt.savefig("demo_mle_vs_bayes.png", dpi=150)
 print("Saved demo_mle_vs_bayes.png")
-plt.show()
+
+# ── 6. Standalone MLE figure ─────────────────────────────────────────────────
+fig_mle, ax_mle = plt.subplots(figsize=(6, 5))
+ax_mle.scatter(x, y, color="steelblue", zorder=3, label="data")
+ax_mle.plot(x_pred, y_mle, color="crimson", linewidth=2,
+            label=r"$\mathbb{E}[y \mid x]$")
+ax_mle.fill_between(x_pred,
+                    y_mle - z90 * sigma_mle,
+                    y_mle + z90 * sigma_mle,
+                    color="crimson", alpha=0.15, label="90 % PI")
+# MLE estimates box
+est_text = (
+    f"$\\hat{{\\beta}}_0 = {beta_0_mle:.2f}$\n"
+    f"$\\hat{{\\beta}}_1 = {beta_1_mle:.2f}$\n"
+    f"$\\hat{{\\sigma}}  = {sigma_mle:.2f}$"
+)
+ax_mle.text(0.05, 0.95, est_text, transform=ax_mle.transAxes,
+            fontsize=10, verticalalignment="top",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.8))
+ax_mle.set_title("Maximum Likelihood")
+ax_mle.set_xlabel("x"); ax_mle.set_ylabel("y"); ax_mle.legend(fontsize=9)
+fig_mle.tight_layout()
+fig_mle.savefig("demo_mle.png", dpi=150)
+print("Saved demo_mle.png")
