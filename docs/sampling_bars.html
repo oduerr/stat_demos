@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daten wackeln – Stichproben</title>
+<!--
+  "Balkendiagramm mit Gedächtnis" (idea: Chris Wild, USCOTS 2009) with real data:
+  CensusAtSchool NZ, data set census.at.school.5000 in the CRAN package iNZightMR,
+  variable travel (4944 students without NA, train merged into other).
+  Each sample: n students drawn without replacement from these 4944.
+  URL parameters: n=30|100|300|1000, view=one|grid, k=<samples drawn at start>,
+  pop=show|hide (population line), embed=1 (buttons only, plots fit the window
+  height; for an iframe in a slide), controls=hide (plots only).
+-->
+<style>
+  :root {
+    --bg: #ffffff; --fg: #222; --muted: #666; --line: #999; --accent: #0070c0;
+    --pop: #c00000; --btn-bg: #f2f2f2; --btn-border: #ccc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1b1b1f; --fg: #eee; --muted: #aaa; --line: #888; --accent: #4ea3ff;
+            --pop: #ff5c5c; --btn-bg: #2a2a30; --btn-border: #444; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 16px; background: var(--bg); color: var(--fg);
+         font-family: Arial, Helvetica, sans-serif; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; color: var(--accent); }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .group { display: flex; gap: 4px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 0.95rem; padding: 6px 12px; border-radius: 6px;
+           border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--fg); cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  label { font-size: 0.95rem; display: flex; gap: 4px; align-items: center; }
+  .plots { display: grid; gap: 8px; }
+  .plots.grid { grid-template-columns: 1fr 1fr; max-width: 1100px; margin: 0 auto; }
+  @media (max-width: 600px) { .plots.grid { grid-template-columns: 1fr; } }
+  svg { width: 100%; height: auto; display: block; }
+  .plots:not(.grid) svg { max-width: 820px; margin: 0 auto; }
+  /* embedded in a slide (iframe): fit the plots into the window height */
+  body.embed { padding: 4px 8px; }
+  body.embed .controls { gap: 6px; margin-bottom: 4px; }
+  body.embed button, body.embed label { font-size: 0.8rem; padding: 3px 8px; }
+  body.embed .plots { gap: 2px; }
+  body.embed .plots:not(.grid) svg { max-height: calc(100vh - 45px); }
+  body.embed .plots.grid svg { max-height: calc((100vh - 50px) / 2); }
+  body.bare .plots:not(.grid) svg { max-height: calc(100vh - 30px); }
+  body.bare .plots.grid svg { max-height: calc((100vh - 40px) / 2); }
+  svg text { fill: var(--fg); font-family: Arial, Helvetica, sans-serif; }
+  .src { color: var(--muted); font-size: 0.75rem; margin-top: 8px; }
+  .src a { color: var(--muted); }
+  body.bare h1, body.bare .sub, body.bare .controls, body.bare .src,
+  body.embed h1, body.embed .sub, body.embed .src { display: none; }
+</style>
+</head>
+<body>
+<h1>Daten wackeln: Wie kommen neuseeländische Schüler:innen zur Schule?</h1>
+<div class="sub">Jede Stichprobe: n Schüler:innen zufällig aus 4944 echten Antworten.
+  Schwarz = letzte Stichprobe, grau = frühere Stichproben („Balkendiagramm mit Gedächtnis“).</div>
+
+<div class="controls">
+  <div class="group" id="nButtons"></div>
+  <div class="group">
+    <button id="one">1 Stichprobe</button>
+    <button id="ten">10 Stichproben</button>
+    <button id="reset">Zurücksetzen</button>
+  </div>
+  <div class="group">
+    <button id="viewOne">Ein n</button>
+    <button id="viewGrid">Alle vier n</button>
+  </div>
+  <label><input type="checkbox" id="pop"> Population zeigen</label>
+</div>
+
+<div class="plots" id="plots"></div>
+
+<div class="src">Daten: CensusAtSchool NZ (R-Paket
+  <a href="https://cran.r-project.org/package=iNZightMR">iNZightMR</a>, Datensatz census.at.school.5000).
+  Idee: Chris Wild, „Visualizing sampling variation“, USCOTS 2009.</div>
+
+<script>
+const KEYS = ['bike', 'bus', 'motor', 'other', 'walk'];
+const LABELS = { bike: 'Fahrrad', bus: 'Bus', motor: 'Auto', other: 'sonstige', walk: 'zu Fuß' };
+const COUNTS = { bike: 242, bus: 1290, motor: 1796, other: 134, walk: 1482 };
+const N_POP = KEYS.reduce((s, k) => s + COUNTS[k], 0);
+const POPULATION = KEYS.flatMap(k => Array(COUNTS[k]).fill(k));
+const POP_PCT = KEYS.map(k => 100 * COUNTS[k] / N_POP);
+const SIZES = [30, 100, 300, 1000];
+const Y_MAX = 70;
+
+const params = new URLSearchParams(location.search);
+const state = {
+  n: SIZES.includes(+params.get('n')) ? +params.get('n') : 300,
+  view: params.get('view') === 'grid' ? 'grid' : 'one',
+  pop: params.get('pop') === 'show',
+  samples: Object.fromEntries(SIZES.map(n => [n, []])),
+};
+if (params.get('controls') === 'hide') document.body.classList.add('bare');
+else if (params.get('embed')) document.body.classList.add('embed');
+
+// n draws without replacement (partial Fisher-Yates), as percent per category
+function drawSample(n) {
+  const pop = POPULATION.slice();
+  const tally = {};
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (pop.length - i));
+    [pop[i], pop[j]] = [pop[j], pop[i]];
+    tally[pop[i]] = (tally[pop[i]] || 0) + 1;
+  }
+  return KEYS.map(k => 100 * (tally[k] || 0) / n);
+}
+
+function add(times) {
+  const ns = state.view === 'grid' ? SIZES : [state.n];
+  for (const n of ns) for (let t = 0; t < times; t++) state.samples[n].push(drawSample(n));
+  render();
+}
+
+const W = 520, H = 330, L = 52, R = 12, T = 40, B = 40;
+const PW = W - L - R, PH = H - T - B, SLOT = PW / KEYS.length, BW = SLOT * 0.62;
+const x = i => L + SLOT * i + (SLOT - BW) / 2;
+const y = p => T + PH * (1 - p / Y_MAX);
+
+function plotSVG(n) {
+  const fs = state.view === 'grid' ? 1.35 : 1;  // larger text when four plots share the space
+  const f = px => Math.round(px * fs);
+  const s = state.samples[n];
+  const cur = s[s.length - 1];
+  const old = s.slice(0, -1);
+  const opacity = Math.max(0.15, Math.min(0.8, 4 / Math.max(old.length, 1)));
+  let g = `<text x="${L + PW / 2}" y="20" text-anchor="middle" font-size="${f(18)}" font-weight="bold">n = ${n}</text>`;
+  g += `<text x="${W - R}" y="20" text-anchor="end" font-size="${f(13)}" style="fill:var(--muted)">${s.length} Stichprobe${s.length === 1 ? '' : 'n'}</text>`;
+  g += `<line x1="${L - 8}" x2="${L - 8}" y1="${y(0)}" y2="${y(Y_MAX)}" stroke="currentColor"/>`;
+  for (let t = 0; t <= Y_MAX; t += 10) {
+    g += `<line x1="${L - 13}" x2="${L - 8}" y1="${y(t)}" y2="${y(t)}" stroke="currentColor"/>`;
+    g += `<text x="${L - 16}" y="${y(t) + 4}" text-anchor="end" font-size="${f(12)}">${t}</text>`;
+  }
+  g += `<text x="14" y="${T + PH / 2}" font-size="${f(13)}" text-anchor="middle" transform="rotate(-90 14 ${T + PH / 2})">Prozent</text>`;
+  KEYS.forEach((k, i) => {
+    for (const o of old)
+      g += `<line x1="${x(i)}" x2="${x(i) + BW}" y1="${y(o[i])}" y2="${y(o[i])}" stroke="var(--line)" stroke-width="2" opacity="${opacity}"/>`;
+    if (cur)
+      g += `<rect x="${x(i)}" y="${y(cur[i])}" width="${BW}" height="${y(0) - y(cur[i])}" fill="none" stroke="currentColor" stroke-width="3"/>`;
+    if (state.pop)
+      g += `<line x1="${x(i) - 6}" x2="${x(i) + BW + 6}" y1="${y(POP_PCT[i])}" y2="${y(POP_PCT[i])}" stroke="var(--pop)" stroke-width="3" stroke-dasharray="7 4"/>`;
+    g += `<text x="${x(i) + BW / 2}" y="${H - B + 22}" text-anchor="middle" font-size="${f(14)}">${LABELS[k]}</text>`;
+  });
+  if (state.pop)
+    g += `<text x="${W - R}" y="${T + 2}" text-anchor="end" font-size="${f(13)}" style="fill:var(--pop)">- - Population (N = ${N_POP})</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="color:var(--fg)">${g}</svg>`;
+}
+
+function render() {
+  const plots = document.getElementById('plots');
+  plots.className = 'plots' + (state.view === 'grid' ? ' grid' : '');
+  plots.innerHTML = (state.view === 'grid' ? SIZES : [state.n]).map(plotSVG).join('');
+  document.querySelectorAll('#nButtons button').forEach(b => {
+    b.classList.toggle('on', state.view === 'one' && +b.dataset.n === state.n);
+    b.disabled = state.view === 'grid';
+  });
+  document.getElementById('viewOne').classList.toggle('on', state.view === 'one');
+  document.getElementById('viewGrid').classList.toggle('on', state.view === 'grid');
+  document.getElementById('pop').checked = state.pop;
+}
+
+const nButtons = document.getElementById('nButtons');
+for (const n of SIZES) {
+  const b = document.createElement('button');
+  b.textContent = `n = ${n}`; b.dataset.n = n;
+  b.onclick = () => { state.n = n; render(); };
+  nButtons.appendChild(b);
+}
+document.getElementById('one').onclick = () => add(1);
+document.getElementById('ten').onclick = () => add(10);
+document.getElementById('reset').onclick = () => {
+  for (const n of SIZES) state.samples[n] = [];
+  render();
+};
+document.getElementById('viewOne').onclick = () => { state.view = 'one'; render(); };
+document.getElementById('viewGrid').onclick = () => { state.view = 'grid'; render(); };
+document.getElementById('pop').onchange = e => { state.pop = e.target.checked; render(); };
+
+const k0 = Math.min(Math.max(parseInt(params.get('k')) || 1, 0), 200);
+for (const n of SIZES) for (let t = 0; t < k0; t++) state.samples[n].push(drawSample(n));
+render();
+</script>
+</body>
+</html>
