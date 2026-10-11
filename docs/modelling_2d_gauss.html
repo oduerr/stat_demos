@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The 2-D Gaussian — modelling correlated data</title>
+<script>
+  window.MathJax = { tex:{ inlineMath:[['$','$'],['\\(','\\)']] }, svg:{ fontCache:'global' } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+  :root {
+    --bg:#0f1117; --panel:#1a1d27; --panel2:#232735; --ink:#e8eaf0; --muted:#9aa0b4;
+    --accent:#6c8cff; --accent2:#ff6b8a; --gold:#ffc857; --green:#4fd6a3;
+    --grid:#2c3142; --border:#313748;
+    --pt:170,180,210; --ellipse:108,140,255;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
+  h1 .sub { color:var(--accent); }
+  .lead { color:var(--muted); font-size:13px; margin:0 0 18px; max-width:900px; line-height:1.5; }
+  .lead a { color:var(--accent); }
+  .wrap { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .slidecol { flex:1 1 360px; min-width:320px; }
+  .plotcol  { flex:1 1 460px; min-width:320px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; }
+
+  /* slide deck */
+  .slide { display:none; }
+  .slide.on { display:block; animation:fade .25s ease; }
+  @keyframes fade { from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+  .slide h2 { font-size:17px; margin:0 0 12px; color:var(--gold); }
+  .slide p, .slide li { font-size:14px; line-height:1.6; color:var(--ink); }
+  .slide .dim { color:var(--muted); }
+  .slide ul { margin:10px 0; padding-left:20px; }
+  .slide li { margin-bottom:6px; }
+  .mathblock { background:var(--panel2); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; margin:14px 0; overflow-x:auto; }
+  .navbar { display:flex; align-items:center; gap:12px; margin-top:18px; }
+  .dots { display:flex; gap:7px; flex:1; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--border); cursor:pointer; border:none; padding:0; }
+  .dot.on { background:var(--accent); }
+  .counter { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+
+  /* plot + controls */
+  canvas { display:block; width:100%; aspect-ratio:1/1; border-radius:8px; background:var(--panel2); }
+  .controls { display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; margin-top:16px; }
+  .slidecol .controls { margin-top:0; margin-bottom:18px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+  .ctrl { display:flex; flex-direction:column; gap:5px; }
+  .ctrl.full { grid-column:1 / -1; }
+  .ctrl label { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .ctrl label b { color:var(--gold); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; flex:1; min-width:90px; }
+  .stat .k { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.5px; }
+  .stat .v { font-size:15px; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .stat .v small { color:var(--muted); font-size:11px; }
+  .presets { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border);
+    padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; }
+  button.ghost:hover { color:var(--ink); }
+  button.nav { background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:8px;
+    cursor:pointer; font-size:13px; font-weight:600; }
+  button.nav:disabled { opacity:.35; cursor:default; }
+  button.ghost.on { background:var(--gold); color:#1a1d27; border-color:var(--gold); font-weight:600; }
+  #lectureBtn { position:fixed; top:20px; right:24px; z-index:20; }
+
+  /* live K matrix */
+  .matrix { display:inline-grid; grid-template-columns:auto auto; gap:4px 16px;
+    border-left:2px solid var(--muted); border-right:2px solid var(--muted);
+    padding:6px 12px; font-variant-numeric:tabular-nums; font-size:15px; vertical-align:middle; }
+  .matrix span { text-align:right; min-width:48px; }
+  .kwrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:6px; }
+
+  /* lecture mode: high-contrast white */
+  body.lecture {
+    --bg:#ffffff; --panel:#ffffff; --panel2:#f4f5f8; --ink:#000000; --muted:#1c1c1c;
+    --accent:#0033cc; --accent2:#c2185b; --gold:#b34700; --green:#0a7d52;
+    --grid:#cfcfcf; --border:#888; --pt:60,60,60; --ellipse:0,51,204;
+  }
+  body.lecture h1 { font-size:28px; }
+  body.lecture .lead { font-size:16px; color:#222; }
+  body.lecture .slide h2 { font-size:22px; }
+  body.lecture .slide p, body.lecture .slide li { font-size:17px; }
+  body.lecture .ctrl label { font-size:15px; }
+  body.lecture .stat .v { font-size:18px; }
+  body.lecture button.ghost.on { background:var(--gold); color:#fff; border-color:var(--gold); }
+</style>
+</head>
+<body>
+
+<button class="ghost" id="lectureBtn" aria-pressed="false">Lecture mode</button>
+
+<h1>The 2-D Gaussian <span class="sub">— modelling correlated data</span></h1>
+<p class="lead">An interactive port of
+<a href="https://github.com/oduerr/da/blob/master/stan/gp/Modelling2D_Gauss.R" target="_blank" rel="noopener">Modelling2D_Gauss.R</a>.
+Drag the sliders for the centres $\mu_1,\mu_2$, the spreads $\sigma_1,\sigma_2$ and the correlation $\rho$.
+Each change draws $N=1000$ fresh samples (blue rings = the 30 %, 60 %, 80 % probability contours).</p>
+
+<div class="wrap">
+
+  <!-- ============ left: sliders + slide deck ============ -->
+  <div class="slidecol card">
+
+    <div class="controls">
+      <div class="ctrl"><label>$\sigma_1$ (spread x₁) <b id="s1lab">1.0</b></label>
+        <input id="s1" type="range" min="0" max="5" step="0.1" value="1"></div>
+      <div class="ctrl"><label>$\sigma_2$ (spread x₂) <b id="s2lab">1.0</b></label>
+        <input id="s2" type="range" min="0" max="5" step="0.1" value="1"></div>
+      <div class="ctrl full"><label>$\rho$ (correlation) <b id="corlab">0.0</b></label>
+        <input id="cor" type="range" min="-1" max="1" step="0.1" value="0"></div>
+      <div class="ctrl"><label>$\mu_1$ (centre x₁) <b id="mu1lab">0.0</b></label>
+        <input id="mu1" type="range" min="-5" max="5" step="0.5" value="0"></div>
+      <div class="ctrl"><label>$\mu_2$ (centre x₂) <b id="mu2lab">0.0</b></label>
+        <input id="mu2" type="range" min="-5" max="5" step="0.5" value="0"></div>
+    </div>
+
+    <div class="slide on" data-slide="0">
+      <h2>1 · Correlated data</h2>
+      <ul>
+        <li>Variables come in correlated pairs: attack / defence, intercept / slope.</li>
+        <li>Build that correlation into the prior &rarr; bivariate Gaussian $\binom{x_1}{x_2}\sim\mathcal N(\boldsymbol\mu,\mathbf K)$.</li>
+      </ul>
+    </div>
+
+    <div class="slide" data-slide="1">
+      <h2>2 · Five parameters</h2>
+      <ul>
+        <li>$\mu_1,\mu_2$ — centre (offset).</li>
+        <li>$\sigma_1,\sigma_2$ — spread per axis.</li>
+        <li>$\rho\in[-1,1]$ — correlation; $\rho\to\pm1$ collapses the cloud onto a line.</li>
+      </ul>
+    </div>
+
+    <div class="slide" data-slide="2">
+      <h2>3 · The density</h2>
+      <div class="mathblock">
+        $$p(\mathbf x)=\frac{1}{2\pi\,\sqrt{\det\mathbf K}}\;
+        \exp\!\Big(-\tfrac12\,(\mathbf x-\boldsymbol\mu)^{\!\top}\,\mathbf K^{-1}\,(\mathbf x-\boldsymbol\mu)\Big)$$
+      </div>
+      <div class="kwrap">
+        <b>$\mathbf K=$</b>
+        <span class="matrix"><span id="k11b">1.00</span><span id="k12b">0.00</span><span id="k21b">0.00</span><span id="k22b">1.00</span></span>
+        <span class="dim">$\det\mathbf K=$ <span id="detK" style="font-variant-numeric:tabular-nums">1.00</span></span>
+      </div>
+    </div>
+
+    <div class="slide" data-slide="3">
+      <h2>4 · Decomposition $\mathbf K=\mathbf S\,\mathbf R\,\mathbf S$</h2>
+      <div class="mathblock">
+        $$\mathbf K=\underbrace{\begin{pmatrix}\sigma_1&0\\[2pt]0&\sigma_2\end{pmatrix}}_{\mathbf S}
+        \underbrace{\begin{pmatrix}1&\rho\\[2pt]\rho&1\end{pmatrix}}_{\mathbf R}
+        \underbrace{\begin{pmatrix}\sigma_1&0\\[2pt]0&\sigma_2\end{pmatrix}}_{\mathbf S}$$
+      </div>
+      <div class="kwrap">
+        <span class="matrix"><span id="sa11">1.00</span><span id="sa12">0.00</span><span id="sa21">0.00</span><span id="sa22">1.00</span></span>
+        <b>·</b>
+        <span class="matrix"><span id="r11">1.00</span><span id="r12">0.00</span><span id="r21">0.00</span><span id="r22">1.00</span></span>
+        <b>·</b>
+        <span class="matrix"><span id="sb11">1.00</span><span id="sb12">0.00</span><span id="sb21">0.00</span><span id="sb22">1.00</span></span>
+        <b>=</b>
+        <span class="matrix"><span id="k11">1.00</span><span id="k12">0.00</span><span id="k21">0.00</span><span id="k22">1.00</span></span>
+      </div>
+    </div>
+
+    <div class="slide" data-slide="4">
+      <h2>5 · Sampling</h2>
+      <div class="mathblock">
+        $$\mathbf x=\boldsymbol\mu+\mathbf L\,\mathbf z,\quad \mathbf L\mathbf L^{\!\top}=\mathbf K,\quad \mathbf z\sim\mathcal N(\mathbf 0,\mathbf I)$$
+      </div>
+      <p class="dim">i.e. R's <code>mvrnorm(N, mu, Sigma=K)</code>. Empirical sd's and correlation below match the sliders (up to noise).</p>
+    </div>
+
+    <div class="navbar">
+      <button class="nav" id="prev">‹ Prev</button>
+      <div class="dots" id="dots"></div>
+      <span class="counter" id="counter">1 / 5</span>
+      <button class="nav" id="next">Next ›</button>
+    </div>
+  </div>
+
+  <!-- ============ right: live plot ============ -->
+  <div class="plotcol card">
+    <canvas id="cv" width="600" height="600"></canvas>
+    <div class="stats">
+      <div class="stat"><div class="k">sd(x₁)</div><div class="v"><span id="sd1">–</span> <small id="sd1set"></small></div></div>
+      <div class="stat"><div class="k">sd(x₂)</div><div class="v"><span id="sd2">–</span> <small id="sd2set"></small></div></div>
+      <div class="stat"><div class="k">cor(x₁,x₂)</div><div class="v"><span id="corE">–</span> <small id="corset"></small></div></div>
+    </div>
+    <div class="presets">
+      <button class="ghost" data-p="reset">Reset (σ=1, ρ=0)</button>
+      <button class="ghost" data-p="football">Football prior (σ=1,2; ρ=0.8)</button>
+      <button class="ghost" data-p="exercise">Exercise (σ=1.5,0.5; ρ=0.5)</button>
+      <button class="ghost" id="resample">↺ New sample</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const N = 1000;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const ids = ['s1','s2','cor','mu1','mu2'];
+const el = {}; ids.forEach(k=>el[k]=document.getElementById(k));
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function rgba(varName,a){ return `rgba(${getCss(varName)},${a})`; }
+function lectureOn(){ return document.body.classList.contains('lecture'); }
+function gaussRand(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// current parameters
+function params(){
+  return { s1:+el.s1.value, s2:+el.s2.value, rho:+el.cor.value, mu1:+el.mu1.value, mu2:+el.mu2.value };
+}
+
+// sample storage (z's kept fixed so only resampling changes the cloud, not slider drags)
+let Z1=[], Z2=[];
+function newNoise(){ Z1=new Array(N); Z2=new Array(N);
+  for(let i=0;i<N;i++){ Z1[i]=gaussRand(); Z2[i]=gaussRand(); } }
+newNoise();
+
+// transform standard normals -> N(mu,K) via Cholesky of K
+function samples(p){
+  const root = Math.sqrt(Math.max(0,1-p.rho*p.rho));
+  const X1=new Array(N), X2=new Array(N);
+  for(let i=0;i<N;i++){
+    X1[i]=p.mu1 + p.s1*Z1[i];
+    X2[i]=p.mu2 + p.rho*p.s2*Z1[i] + p.s2*root*Z2[i];
+  }
+  return {X1,X2};
+}
+function mean(a){ let s=0; for(const v of a)s+=v; return s/a.length; }
+function sd(a){ const m=mean(a); let s=0; for(const v of a)s+=(v-m)*(v-m); return Math.sqrt(s/(a.length-1)); }
+function corr(a,b){ const ma=mean(a),mb=mean(b); let sab=0,sa=0,sb=0;
+  for(let i=0;i<a.length;i++){ const da=a[i]-ma, db=b[i]-mb; sab+=da*db; sa+=da*da; sb+=db*db; }
+  return sab/Math.sqrt(sa*sb); }
+
+// eigen-decomposition of K=[[a,b],[b,c]] -> {l1,l2,theta}
+function eigenK(a,b,c){
+  const m=(a+c)/2, d=Math.sqrt(((a-c)/2)**2 + b*b);
+  return { l1:m+d, l2:m-d, theta:0.5*Math.atan2(2*b, a-c) };
+}
+
+const LO=-5, HI=5;            // fixed data window, both axes
+let dragging=false;          // true while a slider is held → points hidden, ellipses live
+function draw(){
+  const p=params();
+  const W=cv.width, H=cv.height, P=46;
+  const LM=lectureOn();
+  ctx.clearRect(0,0,W,H);
+  const X=v=>P+(v-LO)/(HI-LO)*(W-2*P);
+  const Y=v=>(H-P)-(v-LO)/(HI-LO)*(H-2*P);
+
+  // grid + axes
+  ctx.font=(LM?'15px':'12px')+' system-ui'; ctx.fillStyle=getCss('--muted');
+  ctx.strokeStyle=getCss('--grid'); ctx.lineWidth=1;
+  for(let g=LO; g<=HI; g++){
+    ctx.beginPath(); ctx.moveTo(X(g),P); ctx.lineTo(X(g),H-P); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(P,Y(g)); ctx.lineTo(W-P,Y(g)); ctx.stroke();
+    if(g%1===0){ ctx.textAlign='center'; ctx.fillText(g,X(g),H-P+18);
+      ctx.textAlign='right'; ctx.fillText(g,P-8,Y(g)+4); }
+  }
+  // zero axes emphasis
+  ctx.strokeStyle=getCss('--muted'); ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.moveTo(X(0),P); ctx.lineTo(X(0),H-P); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(P,Y(0)); ctx.lineTo(W-P,Y(0)); ctx.stroke();
+  ctx.textAlign='center'; ctx.fillStyle=getCss('--ink');
+  ctx.fillText('x₁', W-P+14, H-P+18); ctx.fillText('x₂', P-22, P-2);
+
+  // samples — hidden while a slider is being dragged, redrawn fresh on release
+  const s=samples(p);
+  if(!dragging){
+    ctx.fillStyle=rgba('--pt', LM?0.55:0.5);
+    const r=LM?2.4:2;
+    for(let i=0;i<N;i++){
+      const px=X(s.X1[i]), py=Y(s.X2[i]);
+      if(px<P||px>W-P||py<P||py>H-P) continue;
+      ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.fill();
+    }
+  }
+
+  // probability-contour ellipses (Mahalanobis): r^2 = -2 ln(1-level)
+  const a=p.s1*p.s1, b=p.rho*p.s1*p.s2, c=p.s2*p.s2;
+  const eg=eigenK(a,b,c);
+  const ax1=Math.sqrt(Math.max(0,eg.l1)), ax2=Math.sqrt(Math.max(0,eg.l2));
+  ctx.strokeStyle=rgba('--ellipse',0.95); ctx.lineWidth=LM?2.6:2;
+  [0.3,0.6,0.8].forEach(level=>{
+    const rad=Math.sqrt(-2*Math.log(1-level));
+    ctx.beginPath();
+    for(let t=0;t<=64;t++){
+      const ang=t/64*2*Math.PI;
+      const ex=rad*ax1*Math.cos(ang), ey=rad*ax2*Math.sin(ang);
+      const wx=p.mu1 + ex*Math.cos(eg.theta) - ey*Math.sin(eg.theta);
+      const wy=p.mu2 + ex*Math.sin(eg.theta) + ey*Math.cos(eg.theta);
+      const px=X(wx), py=Y(wy);
+      if(t===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath(); ctx.stroke();
+  });
+  // centre marker
+  ctx.fillStyle=getCss('--gold');
+  ctx.beginPath(); ctx.arc(X(p.mu1),Y(p.mu2),LM?5:4,0,7); ctx.fill();
+
+  // ---- update labels, K matrix, empirical stats ----
+  document.getElementById('s1lab').textContent=p.s1.toFixed(1);
+  document.getElementById('s2lab').textContent=p.s2.toFixed(1);
+  document.getElementById('corlab').textContent=p.rho.toFixed(1);
+  document.getElementById('mu1lab').textContent=p.mu1.toFixed(1);
+  document.getElementById('mu2lab').textContent=p.mu2.toFixed(1);
+
+  const set2=(id,v)=>document.getElementById(id).textContent=v.toFixed(2);
+  // decomposition S · R · S = K  (two-digit, live)
+  set2('sa11',p.s1); set2('sa12',0); set2('sa21',0); set2('sa22',p.s2);
+  set2('sb11',p.s1); set2('sb12',0); set2('sb21',0); set2('sb22',p.s2);
+  set2('r11',1);     set2('r12',p.rho); set2('r21',p.rho); set2('r22',1);
+  const k11=a.toFixed(2), k12=b.toFixed(2), k22=c.toFixed(2);
+  ['k11','k11b'].forEach(i=>document.getElementById(i).textContent=k11);
+  ['k12','k12b','k21','k21b'].forEach(i=>document.getElementById(i).textContent=k12);
+  ['k22','k22b'].forEach(i=>document.getElementById(i).textContent=k22);
+  document.getElementById('detK').textContent=(a*c-b*b).toFixed(2);
+
+  document.getElementById('sd1').textContent=sd(s.X1).toFixed(2);
+  document.getElementById('sd2').textContent=sd(s.X2).toFixed(2);
+  document.getElementById('corE').textContent=corr(s.X1,s.X2).toFixed(2);
+  document.getElementById('sd1set').textContent='(σ₁='+p.s1.toFixed(1)+')';
+  document.getElementById('sd2set').textContent='(σ₂='+p.s2.toFixed(1)+')';
+  document.getElementById('corset').textContent='(ρ='+p.rho.toFixed(1)+')';
+}
+
+// ---- slider wiring: live deform while dragging, fresh sample on release ----
+ids.forEach(k=>{
+  el[k].addEventListener('input',()=>{ dragging=true; draw(); });             // points hidden, ellipses follow
+  el[k].addEventListener('change',()=>{ dragging=false; newNoise(); draw(); }); // fresh samples on release
+});
+document.getElementById('resample').onclick=()=>{ newNoise(); draw(); };
+
+document.querySelectorAll('.presets [data-p]').forEach(btn=>{
+  btn.onclick=()=>{
+    const set=(s1,s2,cor,mu1,mu2)=>{ el.s1.value=s1; el.s2.value=s2; el.cor.value=cor; el.mu1.value=mu1; el.mu2.value=mu2; };
+    if(btn.dataset.p==='reset')    set(1,1,0,0,0);
+    if(btn.dataset.p==='football') set(1,2,0.8,0,0);
+    if(btn.dataset.p==='exercise') set(1.5,0.5,0.5,0,1);
+    newNoise(); draw();
+  };
+});
+
+// ---- slide deck ----
+const slides=[...document.querySelectorAll('.slide')];
+let cur=0;
+const dotsBox=document.getElementById('dots');
+slides.forEach((_,i)=>{ const d=document.createElement('button'); d.className='dot'+(i===0?' on':'');
+  d.onclick=()=>show(i); dotsBox.appendChild(d); });
+function show(i){
+  cur=Math.max(0,Math.min(slides.length-1,i));
+  slides.forEach((s,j)=>s.classList.toggle('on',j===cur));
+  [...dotsBox.children].forEach((d,j)=>d.classList.toggle('on',j===cur));
+  document.getElementById('counter').textContent=(cur+1)+' / '+slides.length;
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===slides.length-1;
+}
+document.getElementById('prev').onclick=()=>show(cur-1);
+document.getElementById('next').onclick=()=>show(cur+1);
+document.addEventListener('keydown',e=>{ if(e.key==='ArrowRight')show(cur+1); if(e.key==='ArrowLeft')show(cur-1); });
+show(0);
+
+// ---- lecture toggle ----
+const lectureBtn=document.getElementById('lectureBtn');
+lectureBtn.onclick=()=>{ const on=document.body.classList.toggle('lecture');
+  lectureBtn.classList.toggle('on',on); lectureBtn.setAttribute('aria-pressed',String(on)); draw(); };
+
+draw();
+</script>
+</body>
+</html>
