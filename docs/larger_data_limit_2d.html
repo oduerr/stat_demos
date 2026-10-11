@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bernstein–von Mises in 2-D — posterior → ellipse</title>
+<style>
+  :root {
+    --bg:#0f1117; --panel:#1a1d27; --panel2:#232735; --ink:#e8eaf0; --muted:#9aa0b4;
+    --accent:#6c8cff; --accent2:#ff6b8a; --gold:#ffc857; --green:#4fd6a3;
+    --grid:#2c3142; --border:#313748;
+    /* canvas-only roles (overridden in lecture mode) */
+    --true:#ffffff; --leak:255,107,138; --fill:108,140,255;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; padding:24px; }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; }
+  h1 .sub { color:var(--accent); }
+  .lead { color:var(--muted); font-size:13px; margin:0 0 16px; max-width:820px; line-height:1.5; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tab { background:var(--panel); color:var(--muted); border:1px solid var(--border);
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:500; transition:all .15s; }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tab:hover:not(.active) { color:var(--ink); border-color:#44506e; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:16px; }
+  canvas { display:block; width:100%; border-radius:8px; background:var(--panel2); }
+  .controls { display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:16px; }
+  .ctrl { display:flex; flex-direction:column; gap:6px; min-width:200px; flex:1; }
+  .ctrl label { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .ctrl label b { color:var(--gold); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .btns { display:flex; gap:8px; }
+  button.play { background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+  button.play:hover { background:#5a7bff; }
+  button.ghost:hover { color:var(--ink); }
+  button.ghost.on { background:var(--gold); color:#1a1d27; border-color:var(--gold); font-weight:600; }
+  #lectureBtn { position:fixed; top:20px; right:24px; z-index:20; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-top:14px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .swatch { width:14px; height:3px; border-radius:2px; display:inline-block; }
+  .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .stats { display:flex; gap:24px; flex-wrap:wrap; margin-top:14px; font-size:13px; }
+  .stat { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; }
+  .stat .k { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+  .stat .v { font-size:16px; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .note { font-size:12px; color:var(--muted); line-height:1.55; margin-top:10px; }
+  .note b { color:var(--ink); }
+  .formula { font-family:"Cambria Math",Georgia,serif; color:var(--ink); background:var(--panel2);
+    border:1px solid var(--border); border-radius:8px; padding:10px 14px; display:inline-block; font-size:14px; margin-top:6px; }
+
+  /* ───────── Lecture mode: high-contrast white for bad projectors ───────── */
+  body.lecture {
+    --bg:#ffffff; --panel:#ffffff; --panel2:#ffffff; --ink:#000000; --muted:#1c1c1c;
+    --accent:#0033cc; --accent2:#c2185b; --gold:#b34700; --green:#0a7d52;
+    --grid:#cfcfcf; --border:#888;
+    --true:#000000; --leak:194,24,91; --fill:0,51,204;
+  }
+  body.lecture h1 { font-size:30px; }
+  body.lecture .lead { font-size:17px; color:#222; max-width:1000px; }
+  body.lecture .tab { font-size:15px; }
+  body.lecture .ctrl label { font-size:16px; }
+  body.lecture .legend { font-size:16px; }
+  body.lecture .stat .k { font-size:13px; }
+  body.lecture .stat .v { font-size:22px; }
+  body.lecture .note { font-size:15px; }
+  body.lecture .formula { font-size:18px; }
+  body.lecture button.play, body.lecture button.ghost { font-size:16px; padding:10px 22px; }
+  body.lecture button.ghost.on { background:var(--gold); color:#fff; border-color:var(--gold); }
+</style>
+</head>
+<body>
+
+<button class="ghost" id="lectureBtn" aria-pressed="false">Lecture mode</button>
+
+<h1>Bernstein–von Mises in 2-D <span class="sub">— posterior dissolving into an ellipse</span></h1>
+<p class="lead" id="lead"></p>
+
+<div class="tabs">
+  <div class="tab active" data-m="logistic">Logistic reg. (β₀,β₁)</div>
+  <div class="tab" data-m="normal">Normal (μ,σ)</div>
+  <div class="tab" data-m="rates">Two rates (θ₁,θ₂)</div>
+</div>
+
+<div class="card">
+  <canvas id="cv" width="900" height="470"></canvas>
+  <div class="controls">
+    <div class="ctrl">
+      <label>sample size <b id="nlab">n = 8</b></label>
+      <input id="nsl" type="range" min="0" max="100" step="0.5" value="8">
+    </div>
+    <div class="btns">
+      <button class="play" id="play">▶ Play</button>
+      <button class="ghost" id="reset">↺ New data</button>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--accent)"></i> exact posterior (grid contours)</span>
+    <span><i class="swatch" style="background:var(--gold)"></i> BvM / Laplace ellipse 𝒩(θ̂, I⁻¹)</span>
+    <span><i class="dot" style="background:#fff;width:8px;height:8px"></i> true θ₀</span>
+    <span><i class="dot" style="background:var(--green)"></i> MLE/MAP point estimate</span>
+    <span id="legLeak"><i class="swatch" style="background:rgba(255,107,138,0.5);width:14px;height:10px;border-radius:2px"></i> forbidden region (θ&lt;0)</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="k">point estimate θ̂</div><div class="v" id="stMode">–</div></div>
+    <div class="stat"><div class="k">cov eigenvalues</div><div class="v" id="stEig">–</div></div>
+    <div class="stat"><div class="k" id="stMetricK">metric</div><div class="v" id="stMetric">–</div></div>
+  </div>
+  <p class="formula" id="formula"></p>
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+// ───────────────────────── shared math helpers ─────────────────────────
+function gaussRand(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function rgba(varName,a){ return `rgba(${getCss(varName)},${a})`; }
+function lectureOn(){ return document.body.classList.contains('lecture'); }
+function sigm(z){ return 1/(1+Math.exp(-z)); }
+function erf(x){ const s=x<0?-1:1; x=Math.abs(x); const t=1/(1+0.3275911*x);
+  const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+  return s*y; }
+function normcdf(x,m,s){ return 0.5*(1+erf((x-m)/(s*Math.SQRT2))); }
+function lgamma(z){ const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,
+    -176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-lgamma(1-z);
+  z-=1; let a=c[0]; const t=z+g+0.5; for(let i=1;i<g+2;i++) a+=c[i]/(z+i);
+  return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(a); }
+function gammaSample(k,rate){ // Marsaglia-Tsang, shape k>=1
+  if(k<1){ const u=Math.random(); return gammaSample(k+1,rate)*Math.pow(u,1/k); }
+  const d=k-1/3, c=1/Math.sqrt(9*d);
+  while(true){ let xg,v; do{ xg=gaussRand(); v=1+c*xg; }while(v<=0); v=v*v*v; const u=Math.random();
+    if(u<1-0.0331*xg*xg*xg*xg) return d*v/rate;
+    if(Math.log(u)<0.5*xg*xg+d*(1-v+Math.log(v))) return d*v/rate; } }
+function eig2(M){ const a=M[0][0],b=M[0][1],c=M[1][1]; const t=(a+c)/2,d=Math.sqrt(((a-c)/2)**2+b*b);
+  const l1=t+d,l2=t-d; let v=[b,l1-a]; if(Math.abs(b)<1e-12)v=[1,0]; const nn=Math.hypot(...v);
+  return {l1,l2,ang:Math.atan2(v[1]/nn,v[0]/nn)}; }
+// slider position 0..100 -> n: linear 0..10 then logarithmic to maxN
+function nFromSlider(v,maxN){ v=+v; if(v<=10) return Math.round(v);
+  return Math.round(10*Math.pow(10,(v-10)/90*Math.log10(maxN/10))); }
+
+// ───────────────────────── data pools ─────────────────────────
+const NBIG=100000;
+// logistic
+const LOG_MAXN=2500;
+let LX=[],LY=[];
+function genLog(){ LX=new Array(LOG_MAXN); LY=new Array(LOG_MAXN);
+  for(let i=0;i<LOG_MAXN;i++){ const xi=gaussRand()*1.3; LX[i]=xi; LY[i]=Math.random()<sigm(0.4+2.2*xi)?1:0; } }
+// normal  y~N(mu0,sig0)
+const MU0=0, SIG0=1;
+let NS1=null, NS2=null;
+function genNorm(){ NS1=new Float64Array(NBIG+1); NS2=new Float64Array(NBIG+1);
+  for(let i=0;i<NBIG;i++){ const y=MU0+SIG0*gaussRand(); NS1[i+1]=NS1[i]+y; NS2[i+1]=NS2[i]+y*y; } }
+// two rates  yj~Gamma(k, thetaj)
+const KSH=2, PA=2, PB=1, T1=1.5, T2=0.8;
+let P1=null, P2=null;
+function genRates(){ P1=new Float64Array(NBIG+1); P2=new Float64Array(NBIG+1);
+  for(let i=0;i<NBIG;i++){ P1[i+1]=P1[i]+gammaSample(KSH,T1); P2[i+1]=P2[i]+gammaSample(KSH,T2); } }
+function genAll(){ genLog(); genNorm(); genRates(); }
+genAll();
+
+// ───────────────────────── models ─────────────────────────
+function fitLogistic(n){ // Newton on (b0,b1) with weak N(0,3^2) prior
+  let b=[0,0];
+  for(let it=0;it<60;it++){ let g=[0,0], H=[[0,0],[0,0]];
+    for(let i=0;i<n;i++){ const xi=LX[i], p=sigm(b[0]+b[1]*xi), r=LY[i]-p, w=p*(1-p);
+      g[0]+=r; g[1]+=r*xi; H[0][0]-=w; H[0][1]-=w*xi; H[1][0]-=w*xi; H[1][1]-=w*xi*xi; }
+    g[0]-=b[0]/9; g[1]-=b[1]/9; H[0][0]-=1/9; H[1][1]-=1/9;
+    const det=H[0][0]*H[1][1]-H[0][1]*H[1][0];
+    const inv=[[H[1][1]/det,-H[0][1]/det],[-H[1][0]/det,H[0][0]/det]];
+    const s=[inv[0][0]*g[0]+inv[0][1]*g[1], inv[1][0]*g[0]+inv[1][1]*g[1]];
+    b=[b[0]-s[0], b[1]-s[1]]; if(Math.abs(s[0])+Math.abs(s[1])<1e-9)break; }
+  let H=[[0,0],[0,0]];
+  for(let i=0;i<n;i++){ const xi=LX[i], p=sigm(b[0]+b[1]*xi), w=p*(1-p);
+    H[0][0]-=w; H[0][1]-=w*xi; H[1][0]-=w*xi; H[1][1]-=w*xi*xi; }
+  H[0][0]-=1/9; H[1][1]-=1/9;
+  const I=[[-H[0][0],-H[0][1]],[-H[1][0],-H[1][1]]];
+  const det=I[0][0]*I[1][1]-I[0][1]*I[1][0];
+  const cov=[[I[1][1]/det,-I[0][1]/det],[-I[1][0]/det,I[0][0]/det]];
+  return {mode:b, cov};
+}
+
+const MODELS = {
+  logistic: {
+    title:'logistic regression β = (β₀, β₁)',
+    labels:{x:'β₀', y:'β₁'}, true:[0.4,2.2], axis:{xmin:-1.6,xmax:2.6,ymin:-0.6,ymax:5.2},
+    boundary:{x:null,y:null}, minN:5, maxN:LOG_MAXN, NG:60,
+    lead:'No conjugacy: the true posterior (blue contours) is <b>banana-shaped / curved</b> at small n. The gold ellipse is the Laplace/BvM Gaussian using the Fisher information at the mode. At small n the ellipse cannot capture the curvature; as n grows the posterior straightens, contracts like 1/√n and the ellipse becomes an excellent fit — and both lock onto the true (β₀,β₁).',
+    formula:'yᵢ ~ Bernoulli(σ(β₀+β₁xᵢ)),&nbsp; I(β) = Σ σᵢ(1−σᵢ)·[1,xᵢ;xᵢ,xᵢ²]&nbsp; (data-dependent, no sufficient stats)',
+    logpost:(b0,b1,n)=>{ let lp=0; for(let i=0;i<n;i++){ const p=sigm(b0+b1*LX[i]);
+        lp += LY[i]?Math.log(p+1e-12):Math.log(1-p+1e-12); } return lp -0.5*(b0*b0+b1*b1)/9; },
+    fit:fitLogistic,
+    metric:(n,f)=>{ const sd0=Math.sqrt(f.cov[0][0]), sd1=Math.sqrt(f.cov[1][1]);
+        const corr=f.cov[0][1]/(sd0*sd1); return {label:'curvature index', value:(Math.abs(corr)*sd1).toFixed(3)}; }
+  },
+  normal: {
+    title:'normal model θ = (μ, σ)',
+    labels:{x:'μ', y:'σ'}, true:[MU0,SIG0], axis:{xmin:-1.4,xmax:1.4,ymin:-0.7,ymax:2.8},
+    boundary:{x:null,y:0}, minN:2, maxN:NBIG, NG:90,
+    lead:'The posterior over (μ, σ) is bounded by <b>σ &gt; 0</b>, so it is right-skewed in the σ direction. The gold BvM ellipse is symmetric and <b>leaks past σ = 0</b> (into the red forbidden region) at small n — the 2-D version of the 1-D "mass below 0" story. As n grows the skew vanishes, the ellipse stops leaking, and both concentrate on the true (μ, σ).',
+    formula:'yᵢ ~ 𝒩(μ, σ²),&nbsp; log-lik = −n·lnσ − (Σyᵢ² − 2μΣyᵢ + nμ²)/(2σ²),&nbsp; cov ≈ diag(σ²/n, σ²/2n)',
+    logpost:(mu,sig,n)=>{ if(sig<=0) return -1e18; const S1=NS1[n], S2=NS2[n];
+        return -n*Math.log(sig) - (S2 - 2*mu*S1 + n*mu*mu)/(2*sig*sig); },
+    fit:(n)=>{ const mu=NS1[n]/n; const v=Math.max(NS2[n]/n - mu*mu, 1e-6); const sig=Math.sqrt(v);
+        return {mode:[mu,sig], cov:[[v/n,0],[0,v/(2*n)]]}; },
+    metric:(n,f)=>{ const sd=Math.sqrt(f.cov[1][1]); return {label:'ellipse mass σ<0', value:(normcdf(0,f.mode[1],sd)*100).toFixed(2)+'%'}; }
+  },
+  rates: {
+    title:'two independent rates θ = (θ₁, θ₂)',
+    labels:{x:'θ₁', y:'θ₂'}, true:[T1,T2], axis:{xmin:-0.4,xmax:3.6,ymin:-0.4,ymax:2.4},
+    boundary:{x:0,y:0}, minN:2, maxN:NBIG, NG:90,
+    lead:'Two independent Gamma rates, each bounded by <b>θ &gt; 0</b>. The exact posterior (product of two Gammas) is right-skewed on <b>both axes</b>; the gold ellipse leaks past both zero-boundaries at small n. As n grows the skew dies on both axes (skewness 2/√(kn+α) → 0) and the ellipse becomes exact — both axes consistent.',
+    formula:'yⱼᵢ ~ Gamma(k=2, θⱼ),&nbsp; prior Gamma(2,1) &nbsp;⟹&nbsp; θⱼ|y ~ Gamma(kn+2, Σyⱼ+1),&nbsp; independent across j',
+    logpost:(t1,t2,n)=>{ if(t1<=0||t2<=0) return -1e18; const s=KSH*n+PA, r1=P1[n]+PB, r2=P2[n]+PB;
+        return (s-1)*Math.log(t1)-r1*t1 + (s-1)*Math.log(t2)-r2*t2; },
+    fit:(n)=>{ const s=KSH*n+PA, r1=P1[n]+PB, r2=P2[n]+PB;
+        return {mode:[(s-1)/r1,(s-1)/r2], cov:[[s/(r1*r1),0],[0,s/(r2*r2)]]}; },
+    metric:(n,f)=>{ const l1=normcdf(0,f.mode[0],Math.sqrt(f.cov[0][0])), l2=normcdf(0,f.mode[1],Math.sqrt(f.cov[1][1]));
+        return {label:'max ellipse mass <0', value:(Math.max(l1,l2)*100).toFixed(2)+'%'}; }
+  }
+};
+
+// ───────────────────────── renderer ─────────────────────────
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+function tickStep(range){ const raw=range/6, p=Math.pow(10,Math.floor(Math.log10(raw))), f=raw/p;
+  let s; if(f<1.5)s=1; else if(f<3)s=2; else if(f<7)s=5; else s=10; return s*p; }
+
+let curKey='logistic';
+
+function draw(model, n){
+  const LM=lectureOn();
+  const fGrid=LM?'15px system-ui':'11px system-ui';
+  const lwEll=LM?3:2, lwEll2=LM?2:1.3, lwCon=LM?3:2, lwCon2=LM?2:1.3;
+  const W=cv.width, H=cv.height, P=50;
+  const {xmin,xmax,ymin,ymax}=model.axis;
+  const X=v=>P+(v-xmin)/(xmax-xmin)*(W-2*P);
+  const Y=v=>H-P-(v-ymin)/(ymax-ymin)*(H-2*P);
+  ctx.clearRect(0,0,W,H);
+
+  // forbidden region(s) for boundary models
+  ctx.fillStyle=rgba('--leak',0.12);
+  if(model.boundary.y!=null){ const y0=Y(model.boundary.y); ctx.fillRect(P,y0,W-2*P,(H-P)-y0); }
+  if(model.boundary.x!=null){ const x0=X(model.boundary.x); ctx.fillRect(P,P,x0-P,H-2*P); }
+
+  // grid + axis ticks
+  ctx.strokeStyle=getCss('--grid'); ctx.lineWidth=1; ctx.font=fGrid; ctx.fillStyle=getCss('--muted');
+  const sx=tickStep(xmax-xmin), sy=tickStep(ymax-ymin);
+  ctx.textAlign='center';
+  for(let g=Math.ceil(xmin/sx)*sx; g<=xmax+1e-9; g+=sx){ ctx.beginPath(); ctx.moveTo(X(g),P); ctx.lineTo(X(g),H-P); ctx.stroke();
+    ctx.fillText((+g.toFixed(6)).toString(), X(g), H-P+16); }
+  ctx.textAlign='right';
+  for(let g=Math.ceil(ymin/sy)*sy; g<=ymax+1e-9; g+=sy){ ctx.beginPath(); ctx.moveTo(P,Y(g)); ctx.lineTo(W-P,Y(g)); ctx.stroke();
+    ctx.fillText((+g.toFixed(6)).toString(), P-8, Y(g)+4); }
+  ctx.textAlign='left'; ctx.fillStyle=getCss('--muted');
+  ctx.fillText(model.labels.x, W-P+6, H-P+16); ctx.fillText(model.labels.y, P-8, P-10);
+
+  // exact posterior on a grid
+  const NG=model.NG, cellW=(W-2*P)/NG, cellH=(H-2*P)/NG;
+  const grid=[]; let maxlp=-1e18;
+  for(let i=0;i<NG;i++){ const a=xmin+(i+0.5)/NG*(xmax-xmin); const row=[];
+    for(let j=0;j<NG;j++){ const b=ymin+(j+0.5)/NG*(ymax-ymin); const lp=model.logpost(a,b,n); row.push(lp); if(lp>maxlp)maxlp=lp; }
+    grid.push(row); }
+  for(let i=0;i<NG;i++)for(let j=0;j<NG;j++){ const al=Math.exp(grid[i][j]-maxlp);
+    if(al>0.02){ ctx.fillStyle=rgba('--fill',Math.min(0.55,al*0.6)); ctx.fillRect(P+i*cellW, H-P-(j+1)*cellH, cellW+1, cellH+1); } }
+
+  function contour(level,color,w){ const thr=Math.log(level); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.beginPath();
+    for(let i=0;i<NG-1;i++)for(let j=0;j<NG-1;j++){
+      const f=[grid[i][j]-maxlp, grid[i+1][j]-maxlp, grid[i+1][j+1]-maxlp, grid[i][j+1]-maxlp];
+      const px=[P+i*cellW, P+(i+1)*cellW, P+(i+1)*cellW, P+i*cellW];
+      const py=[H-P-j*cellH, H-P-j*cellH, H-P-(j+1)*cellH, H-P-(j+1)*cellH];
+      const pts=[]; for(let k=0;k<4;k++){ const a=f[k], b=f[(k+1)%4];
+        if((a>=thr)!==(b>=thr)){ const t=(thr-a)/(b-a); pts.push([px[k]+t*(px[(k+1)%4]-px[k]), py[k]+t*(py[(k+1)%4]-py[k])]); } }
+      if(pts.length===2){ ctx.moveTo(pts[0][0],pts[0][1]); ctx.lineTo(pts[1][0],pts[1][1]); } }
+    ctx.stroke(); }
+  contour(Math.exp(-0.5*2.448*2.448), getCss('--accent'), lwCon);    // ~95%
+  contour(Math.exp(-0.5*1.177*1.177), getCss('--accent'), lwCon2);   // ~50%
+
+  // BvM / Laplace ellipse
+  const f=model.fit(n);
+  // Build the ellipse in DATA space and map every point through X()/Y() — the
+  // same mapping as the contours. (Rotating the canvas then scaling the two
+  // screen axes unequally is only valid at equal aspect ratio, which we are not.)
+  function ellipse(cov,cx,cy,k,color,w,dash){ const ee=eig2(cov);
+    const s1=k*Math.sqrt(Math.max(ee.l1,0)), s2=k*Math.sqrt(Math.max(ee.l2,0));
+    const e1x=Math.cos(ee.ang), e1y=Math.sin(ee.ang);   // major-axis eigenvector (data space)
+    const e2x=-e1y, e2y=e1x;                             // minor axis (perpendicular)
+    ctx.beginPath();
+    for(let t=0;t<=2*Math.PI+0.01;t+=0.04){ const c=Math.cos(t), s=Math.sin(t);
+      const dx=s1*c*e1x + s2*s*e2x, dy=s1*c*e1y + s2*s*e2y;
+      const px=X(cx+dx), py=Y(cy+dy); if(t===0)ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+    ctx.strokeStyle=color; ctx.lineWidth=w; ctx.setLineDash(dash||[]); ctx.stroke(); ctx.setLineDash([]); }
+  ellipse(f.cov, f.mode[0], f.mode[1], 2.448, getCss('--gold'), lwEll, [7,5]);
+  ellipse(f.cov, f.mode[0], f.mode[1], 1.177, getCss('--gold'), lwEll2, [5,4]);
+
+  // markers: true point (white dot), MAP/MLE mode (gold cross + green point dot)
+  ctx.fillStyle=getCss('--true'); ctx.beginPath(); ctx.arc(X(model.true[0]),Y(model.true[1]), LM?6:4, 0, 7); ctx.fill();
+  ctx.strokeStyle=getCss('--gold'); ctx.lineWidth=LM?3:2; ctx.beginPath();
+  ctx.moveTo(X(f.mode[0])-7,Y(f.mode[1])); ctx.lineTo(X(f.mode[0])+7,Y(f.mode[1]));
+  ctx.moveTo(X(f.mode[0]),Y(f.mode[1])-7); ctx.lineTo(X(f.mode[0]),Y(f.mode[1])+7); ctx.stroke();
+  ctx.fillStyle=getCss('--green'); ctx.beginPath(); ctx.arc(X(f.mode[0]),Y(f.mode[1]), LM?5:3.5, 0, 7); ctx.fill();
+
+  // stats
+  const e=eig2(f.cov); const m=model.metric(n,f);
+  document.getElementById('stMode').textContent=`(${f.mode[0].toFixed(3)}, ${f.mode[1].toFixed(3)})`;
+  document.getElementById('stEig').textContent=`${e.l1.toExponential(2)}, ${e.l2.toExponential(2)}`;
+  document.getElementById('stMetricK').textContent=m.label;
+  document.getElementById('stMetric').textContent=m.value;
+}
+
+// ───────────────────────── wiring ─────────────────────────
+const nsl=document.getElementById('nsl');
+function curN(){ const m=MODELS[curKey]; return Math.max(m.minN, nFromSlider(nsl.value, m.maxN)); }
+function setLabel(n){ document.getElementById('nlab').textContent='n = '+n.toLocaleString(); }
+function redraw(){ const n=curN(); setLabel(n); draw(MODELS[curKey], n); }
+
+function selectModel(key){ curKey=key;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.m===key));
+  const m=MODELS[key];
+  document.getElementById('lead').innerHTML=m.lead;
+  document.getElementById('formula').innerHTML=m.formula;
+  document.getElementById('note').innerHTML='Model: <b>'+m.title+'</b>. Drag <i>n</i> up to '+m.maxN.toLocaleString()+' or hit play. The exact posterior and the BvM ellipse coincide as n→∞ (Bernstein–von Mises) and both contract onto θ₀ (consistency).';
+  document.getElementById('legLeak').style.display = (m.boundary.x!=null||m.boundary.y!=null)?'inline-flex':'none';
+  redraw();
+}
+document.querySelectorAll('.tab').forEach(t=>{ t.onclick=()=>{ stopPlay(); selectModel(t.dataset.m); }; });
+
+nsl.oninput=()=>{ stopPlay(); redraw(); };
+document.getElementById('reset').onclick=()=>{ stopPlay(); genAll(); redraw(); };
+
+const lectureBtn=document.getElementById('lectureBtn');
+lectureBtn.onclick=()=>{ const on=document.body.classList.toggle('lecture');
+  lectureBtn.classList.toggle('on',on); lectureBtn.setAttribute('aria-pressed',String(on)); redraw(); };
+
+let anim=null;
+function stopPlay(){ if(anim){ clearInterval(anim); anim=null; document.getElementById('play').textContent='▶ Play'; } }
+document.getElementById('play').onclick=function(){
+  if(anim){ stopPlay(); return; }
+  let pos=0; nsl.value=0; redraw(); this.textContent='⏸ Pause';
+  anim=setInterval(()=>{ pos+=0.7; if(pos>=100)pos=100; nsl.value=pos; redraw();
+    if(pos>=100){ stopPlay(); } }, 60);
+};
+
+selectModel('logistic');
+</script>
+</body>
+</html>
