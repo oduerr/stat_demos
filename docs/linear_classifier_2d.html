@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Perceptron &amp; Logistic Regression in 2D</title>
+  <style>
+    :root {
+      --bg: #ffffff; --text: #1f2937; --muted: #6b7280; --line: #111827;
+      --panel: #f8fafc; --border: #e5e7eb; --accent: #2563eb;
+      --c0: #5b2a86; --c1: #f2c12e; --err: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: Arial, Helvetica, sans-serif; }
+    header { padding: 16px 20px 4px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .tabs { display: flex; gap: 6px; margin-top: 10px; }
+    .tabs a { padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px;
+      text-decoration: none; color: var(--text); font-size: 14px; }
+    .tabs a.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 14px; padding: 10px 20px 20px; height: calc(100vh - 110px); min-height: 420px; }
+    body.embed main { height: 100vh; padding: 6px; gap: 10px; min-height: 0; }
+    body.embed header { display: none; }
+    .plane { position: relative; min-height: 0; }
+    .plane canvas, .plane svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+    .eq { font-size: 17px; padding: 6px 10px; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 8px; font-variant-numeric: tabular-nums;
+      white-space: nowrap; overflow: hidden; }
+    .eq .b0 { color: #b45309; } .eq .b1 { color: #2563eb; } .eq .b2 { color: #059669; }
+    .sl { display: grid; grid-template-columns: 34px 1fr 56px; align-items: center; gap: 8px; font-size: 16px; }
+    .sl input { width: 100%; }
+    .sl .v { text-align: right; font-variant-numeric: tabular-nums; }
+    .act { position: relative; flex: 1 1 auto; min-height: 140px; }
+    .act svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    button { font: inherit; font-size: 14px; padding: 4px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    .stats { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .stats b { color: var(--text); }
+    select { font: inherit; font-size: 14px; }
+    text { font-family: Arial, Helvetica, sans-serif; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Linear classifier in 2D: perceptron and logistic regression</h1>
+    <p id="sub"></p>
+    <div class="tabs"><a href="?mode=perceptron" id="tabP">Perceptron (step)</a><a href="?mode=logistic" id="tabL">Logistic regression (sigmoid)</a></div>
+  </header>
+  <main>
+    <div class="plane" id="plane"><canvas id="heat"></canvas><svg id="psvg"></svg></div>
+    <div class="side">
+      <div class="eq" id="eq"></div>
+      <div class="sl"><span>β₀</span><input type="range" id="b0" min="-10" max="10" step="0.05"><span class="v" id="b0v"></span></div>
+      <div class="sl"><span>β₁</span><input type="range" id="b1" min="-6" max="6" step="0.05"><span class="v" id="b1v"></span></div>
+      <div class="sl"><span>β₂</span><input type="range" id="b2" min="-6" max="6" step="0.05"><span class="v" id="b2v"></span></div>
+      <div class="act" id="actWrap"><svg id="asvg"></svg></div>
+      <div class="btns">
+        <button id="step">Step</button><button id="play">▶ Train</button><button id="reset">Reset</button>
+        <select id="colorBy" title="Colour of the plane"><option value="z">colour: z</option><option value="d">colour: distance d</option></select>
+        <select id="data" title="Data set"><option value="sep">separable data</option><option value="overlap">overlapping data</option></select>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const MODE = params.get('mode') === 'logistic' ? 'logistic' : 'perceptron';
+  if (params.get('embed') === '1') document.body.classList.add('embed');
+  document.getElementById(MODE === 'logistic' ? 'tabL' : 'tabP').classList.add('on');
+  document.getElementById('sub').textContent = MODE === 'logistic'
+    ? 'z = β₀ + β₁x₁ + β₂x₂ and p = σ(z). The decision boundary is the line z = 0 (p = 0.5). The colour shows p. Hover over the plane to see z and p of a point.'
+    : 'z = β₀ + β₁x₁ + β₂x₂. The decision boundary is the line z = 0. The colour shows z = ‖β‖·d, with d the signed distance to the line. Hover over the plane to see z and d of a point.';
+  for (const a of document.querySelectorAll('.tabs a')) a.href += params.get('embed') === '1' ? '&embed=1' : '';
+
+  // ---------- data ----------
+  // Separable toy data as in the perceptron notebook (github.com/ioskn/mldl_htwg)
+  const SEP = [
+    [-0.93,1.92,0],[-0.67,2.75,0],[-0.60,2.82,0],[-0.12,2.28,0],[0.03,2.79,0],
+    [0.07,3.25,0],[0.25,3.04,0],[0.49,2.00,0],[1.00,1.47,0],[1.02,1.12,0],
+    [0.53,-1.72,1],[0.87,-1.53,1],[1.25,-1.32,1],[1.63,-1.60,1],[1.47,-2.09,1],
+    [2.69,0.15,1],[2.83,1.15,1],[2.92,0.41,1],[3.44,1.20,1],[3.62,0.15,1]];
+  function overlapData() {
+    let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd())) * Math.cos(2 * Math.PI * rnd());
+    const out = [];
+    for (let i = 0; i < 15; i++) out.push([0.6 + 0.9 * gauss(), 1.6 + 0.9 * gauss(), 0]);
+    for (let i = 0; i < 15; i++) out.push([2.0 + 0.9 * gauss(), -0.2 + 0.9 * gauss(), 1]);
+    return out;
+  }
+  let DATA = SEP;
+  const DOM = { x1: [-1.5, 4.0], x2: [-2.6, 3.7] };
+
+  // ---------- state ----------
+  const START = [-1.0, 0.3, 1.0];   // same poor start in both modes
+  let beta = START.slice();
+  let probe = null;       // hovered point in data coordinates
+  let highlight = -1;     // index of point used in the last perceptron update
+  let iter = 0, timer = null, msg = '';
+  const sig = z => 1 / (1 + Math.exp(-z));
+  const zOf = (b, x1, x2) => b[0] + b[1] * x1 + b[2] * x2;
+  const norm = b => Math.hypot(b[1], b[2]);
+
+  // ---------- colour maps ----------
+  // viridis (logistic: p) and a purple–white–gold diverging map (perceptron: z or d)
+  const VIR = [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[110,206,88],[181,222,43],[253,231,37]];
+  function lerpMap(m, t) {
+    t = Math.min(1, Math.max(0, t)) * (m.length - 1);
+    const i = Math.min(m.length - 2, Math.floor(t)), f = t - i;
+    return m[i].map((c, k) => c + f * (m[i + 1][k] - c));
+  }
+  const DIV = [[91,42,134],[160,120,190],[235,225,242],[255,255,255],[252,238,200],[242,193,46],[190,130,10]];
+  const ZMAX = 6;   // colour saturates at |z| = 6 (or |d| = 3)
+
+  // ---------- plane ----------
+  const plane = document.getElementById('plane'), heat = document.getElementById('heat'),
+        psvg = document.getElementById('psvg');
+  const M = { l: 40, r: 62, t: 10, b: 34 };
+  let G = null; // geometry: scale and domain in pixels
+  function layout() {
+    const W = plane.clientWidth, H = plane.clientHeight;
+    const iw = W - M.l - M.r, ih = H - M.t - M.b;
+    const s = Math.min(iw / (DOM.x1[1] - DOM.x1[0]), ih / (DOM.x2[1] - DOM.x2[0]));
+    const cx = (DOM.x1[0] + DOM.x1[1]) / 2, cy = (DOM.x2[0] + DOM.x2[1]) / 2;
+    const x1 = [cx - iw / 2 / s, cx + iw / 2 / s], x2 = [cy - ih / 2 / s, cy + ih / 2 / s];
+    G = { W, H, iw, ih, s, x1, x2,
+      px: x => M.l + (x - x1[0]) * s, py: y => M.t + (x2[1] - y) * s,
+      ix: p => x1[0] + (p - M.l) / s, iy: p => x2[1] - (p - M.t) / s };
+    const dpr = window.devicePixelRatio || 1;
+    heat.width = Math.round(W * dpr); heat.height = Math.round(H * dpr);
+    psvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  }
+  function niceTicks(a, b, n) {
+    const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 5, 10].map(m => m * p).find(v => v >= raw);
+    const out = []; for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(10));
+    return out;
+  }
+  function colorAt(z) {
+    if (MODE === 'logistic') return lerpMap(VIR, sig(z));
+    const v = colorBy.value === 'd' ? z / norm(beta) / (ZMAX / 2) : z / ZMAX;
+    return lerpMap(DIV, (v + 1) / 2);
+  }
+  function drawHeat() {
+    const ctx = heat.getContext('2d'), dpr = window.devicePixelRatio || 1;
+    const x0 = Math.round(M.l * dpr), y0 = Math.round(M.t * dpr);
+    const w = Math.round(G.iw * dpr), h = Math.round(G.ih * dpr);
+    ctx.clearRect(0, 0, heat.width, heat.height);
+    const img = ctx.createImageData(w, h), d = img.data;
+    const alpha = MODE === 'logistic' ? 150 : 255;
+    for (let j = 0; j < h; j++) {
+      const yv = G.iy(M.t + (j + 0.5) / dpr);
+      for (let i = 0; i < w; i++) {
+        const c = colorAt(zOf(beta, G.ix(M.l + (i + 0.5) / dpr), yv)), k = 4 * (j * w + i);
+        d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = alpha;
+      }
+    }
+    ctx.putImageData(img, x0, y0);
+  }
+  // segment of the line z(x) = level inside the visible domain
+  function clipLine(b, level) {
+    const pts = [], [a, c1, c2] = [b[0] - level, b[1], b[2]];
+    const add = (x, y) => { if (x >= G.x1[0] - 1e-9 && x <= G.x1[1] + 1e-9 && y >= G.x2[0] - 1e-9 && y <= G.x2[1] + 1e-9) pts.push([x, y]); };
+    if (Math.abs(c2) > 1e-12) for (const x of G.x1) add(x, -(a + c1 * x) / c2);
+    if (Math.abs(c1) > 1e-12) for (const y of G.x2) add(-(a + c2 * y) / c1, y);
+    if (pts.length < 2) return null;
+    let best = null, dm = -1;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const dd = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]); if (dd > dm) { dm = dd; best = [pts[i], pts[j]]; }
+    }
+    return dm > 1e-9 ? best : null;
+  }
+  const el = (tag, attrs, parent) => {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e); return e;
+  };
+  function levels() {
+    if (MODE === 'logistic') return [0.1, 0.25, 0.5, 0.75, 0.9].map(p => ({ z: Math.log(p / (1 - p)), lab: `p=${p}` }));
+    const out = [];
+    if (colorBy.value === 'd') { const n = norm(beta); for (let k = -3; k <= 3; k++) out.push({ z: k * n, lab: `d=${k}` }); }
+    else for (let k = -6; k <= 6; k += 2) out.push({ z: k, lab: `z=${k}` });
+    return out;
+  }
+  // vertical colour bar right of the plot: p (logistic), z or d (perceptron)
+  function drawColorbar(ax) {
+    const x = M.l + G.iw + 12, w = 12, y0 = M.t, h = G.ih;
+    const grad = el('linearGradient', { id: 'cbar', x1: 0, y1: 1, x2: 0, y2: 0 }, psvg.querySelector('defs'));
+    const map = MODE === 'logistic' ? VIR : DIV;
+    map.forEach((c, i) => el('stop', { offset: i / (map.length - 1), 'stop-color': `rgb(${c.map(Math.round)})`,
+      'stop-opacity': MODE === 'logistic' ? 0.6 : 1 }, grad));
+    el('rect', { x, y: y0, width: w, height: h, fill: 'url(#cbar)', stroke: '#9ca3af' }, ax);
+    let ticks;
+    if (MODE === 'logistic') ticks = [0, 0.25, 0.5, 0.75, 1].map(v => [v, v]);
+    else if (colorBy.value === 'd') ticks = [-3, -2, -1, 0, 1, 2, 3].map(v => [(v / 3 + 1) / 2, v]);
+    else ticks = [-6, -4, -2, 0, 2, 4, 6].map(v => [(v / 6 + 1) / 2, v]);
+    for (const [f, v] of ticks) {
+      const yy = y0 + (1 - f) * h;
+      el('line', { x1: x + w, x2: x + w + 3, y1: yy, y2: yy, stroke: '#6b7280' }, ax);
+      el('text', { x: x + w + 5, y: yy + 4, 'font-size': 11, fill: '#374151' }, ax).textContent = v;
+    }
+    el('text', { x: x + w / 2, y: y0 + h + 18, 'text-anchor': 'middle', 'font-size': 13, 'font-weight': 'bold' }, ax)
+      .textContent = MODE === 'logistic' ? 'p' : colorBy.value;
+  }
+  function drawPlane() {
+    psvg.innerHTML = '';
+    const defs = el('defs', {}, psvg);
+    const cp = el('clipPath', { id: 'clipP' }, defs);
+    el('rect', { x: M.l, y: M.t, width: G.iw, height: G.ih }, cp);
+    const mk = el('marker', { id: 'arr', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#111827' }, mk);
+    // axes
+    const ax = el('g', {}, psvg);
+    el('rect', { x: M.l, y: M.t, width: G.iw, height: G.ih, fill: 'none', stroke: '#9ca3af' }, ax);
+    for (const t of niceTicks(G.x1[0], G.x1[1], 6)) {
+      el('line', { x1: G.px(t), x2: G.px(t), y1: M.t + G.ih, y2: M.t + G.ih + 4, stroke: '#6b7280' }, ax);
+      el('text', { x: G.px(t), y: M.t + G.ih + 16, 'text-anchor': 'middle', 'font-size': 12, fill: '#374151' }, ax).textContent = t;
+    }
+    for (const t of niceTicks(G.x2[0], G.x2[1], 6)) {
+      el('line', { x1: M.l - 4, x2: M.l, y1: G.py(t), y2: G.py(t), stroke: '#6b7280' }, ax);
+      el('text', { x: M.l - 7, y: G.py(t) + 4, 'text-anchor': 'end', 'font-size': 12, fill: '#374151' }, ax).textContent = t;
+    }
+    el('text', { x: M.l + G.iw / 2, y: G.H - 3, 'text-anchor': 'middle', 'font-size': 14 }, ax).textContent = 'x₁';
+    el('text', { x: 12, y: M.t + G.ih / 2, 'text-anchor': 'middle', 'font-size': 14 }, ax).textContent = 'x₂';
+
+    drawColorbar(ax);
+    const g = el('g', { 'clip-path': 'url(#clipP)' }, psvg);
+    if (norm(beta) > 1e-6) {
+      const placed = [];   // label positions in px, to avoid overlapping labels
+      for (const L of levels()) {
+        if (Math.abs(L.z) < 1e-9 || (MODE === 'logistic' && Math.abs(L.z) < 1e-9)) continue;
+        const seg = clipLine(beta, L.z); if (!seg) continue;
+        el('line', { x1: G.px(seg[0][0]), y1: G.py(seg[0][1]), x2: G.px(seg[1][0]), y2: G.py(seg[1][1]),
+          stroke: '#374151', 'stroke-opacity': 0.45, 'stroke-dasharray': '4 4' }, g);
+        // label 30 px inside the frame from the left/lower end of the segment
+        const lenPx = Math.hypot(G.px(seg[1][0]) - G.px(seg[0][0]), G.py(seg[1][1]) - G.py(seg[0][1]));
+        if (lenPx < 70) continue;
+        const [a0, a1] = seg[0][0] <= seg[1][0] ? seg : [seg[1], seg[0]];
+        const t = 30 / lenPx, lx = a0[0] + t * (a1[0] - a0[0]), ly = a0[1] + t * (a1[1] - a0[1]);
+        const X = Math.min(M.l + G.iw - 24, Math.max(M.l + 24, G.px(lx))), Y = Math.min(M.t + G.ih - 8, Math.max(M.t + 14, G.py(ly)));
+        if (placed.some(([u, v]) => Math.abs(u - X) < 50 && Math.abs(v - Y) < 16)) continue;
+        placed.push([X, Y]);
+        el('text', { x: X, y: Y + 4, 'text-anchor': 'middle', 'font-size': 11, fill: '#374151',
+          stroke: '#fff', 'stroke-width': 3, 'stroke-opacity': 0.8, 'paint-order': 'stroke' }, g).textContent = L.lab;
+      }
+      const seg = clipLine(beta, 0);
+      if (seg) {
+        el('line', { x1: G.px(seg[0][0]), y1: G.py(seg[0][1]), x2: G.px(seg[1][0]), y2: G.py(seg[1][1]),
+          stroke: '#111827', 'stroke-width': 3 }, g);
+        // normal vector β = (β1, β2): start on the line where the arrow and its label are farthest from the data
+        const n = norm(beta);
+        let fx = 0, fy = 0, tx = 0, ty = 0, best = -1;
+        for (let t = 0.2; t <= 0.8001; t += 0.05) {
+          const ax_ = seg[0][0] + t * (seg[1][0] - seg[0][0]), ay_ = seg[0][1] + t * (seg[1][1] - seg[0][1]);
+          const bx_ = ax_ + beta[1] / n * 0.9, by_ = ay_ + beta[2] / n * 0.9;
+          const lx_ = bx_ + 0.45 * Math.sign(beta[1] || 1), ly_ = by_;
+          let dmin = Infinity;
+          for (const [x1, x2] of DATA) for (const [qx, qy] of [[(ax_ + bx_) / 2, (ay_ + by_) / 2], [bx_, by_], [lx_, ly_]])
+            dmin = Math.min(dmin, Math.hypot(x1 - qx, x2 - qy));
+          if (bx_ < G.x1[0] + 0.3 || bx_ > G.x1[1] - 0.8 || by_ < G.x2[0] + 0.3 || by_ > G.x2[1] - 0.3) dmin -= 1;
+          if (dmin > best) { best = dmin; fx = ax_; fy = ay_; tx = bx_; ty = by_; }
+        }
+        el('line', { x1: G.px(fx), y1: G.py(fy), x2: G.px(tx), y2: G.py(ty), stroke: '#111827', 'stroke-width': 2, 'marker-end': 'url(#arr)' }, g);
+        el('text', { x: G.px(tx) + 5, y: G.py(ty) - 4, 'font-size': 13, 'font-weight': 'bold' }, g).textContent = '(β₁, β₂)';
+        const [r0, r1] = seg[0][0] <= seg[1][0] ? seg : [seg[1], seg[0]];
+        // put the label where the line runs through empty space (prefer the right-hand end)
+        let tt = 0.85, far = -1;
+        for (const c of [0.85, 0.7, 0.55, 0.4, 0.25, 0.12]) {
+          const qx = r0[0] + c * (r1[0] - r0[0]), qy = r0[1] + c * (r1[1] - r0[1]);
+          const dm = Math.min(...DATA.map(([x1, x2]) => Math.hypot(x1 - qx, x2 - qy)));
+          if (dm > 0.6) { tt = c; break; }
+          if (dm > far) { far = dm; tt = c; }
+        }
+        // on the −β side of the line, so it never meets the arrow
+        const nb = norm(beta), LX = G.px(r0[0] + tt * (r1[0] - r0[0])) - 20 * beta[1] / nb,
+              LY = G.py(r0[1] + tt * (r1[1] - r0[1])) + 20 * beta[2] / nb + 4;
+        el('text', { x: Math.min(M.l + G.iw - 50, Math.max(M.l + 50, LX)), y: Math.min(M.t + G.ih - 6, Math.max(M.t + 16, LY)),
+          'text-anchor': 'middle', 'font-size': 13, 'font-weight': 'bold',
+          fill: '#111827', stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke' }, g).textContent = MODE === 'logistic' ? 'z = 0 (p = 0.5)' : 'z = 0';
+      }
+    }
+    // data points
+    DATA.forEach(([x1, x2, y], i) => {
+      const z = zOf(beta, x1, x2), wrong = (z >= 0 ? 1 : 0) !== y;
+      el('circle', { cx: G.px(x1), cy: G.py(x2), r: 6, fill: y ? 'var(--c1)' : 'var(--c0)', stroke: '#111827', 'stroke-width': 1.2 }, g);
+      if (wrong) el('circle', { cx: G.px(x1), cy: G.py(x2), r: 10, fill: 'none', stroke: 'var(--err)', 'stroke-width': 2 }, g);
+      if (i === highlight) el('circle', { cx: G.px(x1), cy: G.py(x2), r: 14, fill: 'none', stroke: '#2563eb', 'stroke-width': 3 }, g);
+    });
+    // probe: perpendicular to the line and its signed distance
+    if (probe && norm(beta) > 1e-6) {
+      const n = norm(beta), z = zOf(beta, probe[0], probe[1]), d = z / n;
+      const fx = probe[0] - z * beta[1] / n / n, fy = probe[1] - z * beta[2] / n / n;
+      el('line', { x1: G.px(probe[0]), y1: G.py(probe[1]), x2: G.px(fx), y2: G.py(fy), stroke: '#2563eb', 'stroke-width': 2 }, g);
+      el('circle', { cx: G.px(probe[0]), cy: G.py(probe[1]), r: 4, fill: '#2563eb' }, g);
+      el('text', { x: G.px(probe[0]) + 8, y: G.py(probe[1]) - 8, 'font-size': 13, fill: '#1e3a8a', stroke: '#fff', 'stroke-width': 3, 'paint-order': 'stroke' }, g)
+        .textContent = MODE === 'logistic' ? `z=${z.toFixed(2)}  p=${sig(z).toFixed(2)}` : `z=${z.toFixed(2)}  d=${d.toFixed(2)}`;
+    }
+  }
+
+  // ---------- activation panel ----------
+  const asvg = document.getElementById('asvg'), actWrap = document.getElementById('actWrap');
+  function drawAct() {
+    const W = actWrap.clientWidth, H = actWrap.clientHeight; asvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    asvg.innerHTML = '';
+    const m = { l: 34, r: 10, t: 20, b: 36 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const Z = 8, px = z => m.l + (z + Z) / (2 * Z) * iw, py = p => m.t + (1 - p) * ih;
+    const defs = el('defs', {}, asvg), cp = el('clipPath', { id: 'clipA' }, defs);
+    el('rect', { x: m.l, y: m.t - 8, width: iw, height: ih + 16 }, cp);
+    el('rect', { x: m.l, y: m.t, width: iw, height: ih, fill: 'none', stroke: '#9ca3af' }, asvg);
+    for (const t of [-8, -4, 0, 4, 8]) {
+      el('line', { x1: px(t), x2: px(t), y1: m.t + ih, y2: m.t + ih + 4, stroke: '#6b7280' }, asvg);
+      el('text', { x: px(t), y: m.t + ih + 15, 'text-anchor': 'middle', 'font-size': 11, fill: '#374151' }, asvg).textContent = t;
+    }
+    for (const t of [0, 0.5, 1]) {
+      el('text', { x: m.l - 5, y: py(t) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#374151' }, asvg).textContent = t;
+      el('line', { x1: m.l, x2: m.l + iw, y1: py(t), y2: py(t), stroke: '#e5e7eb' }, asvg);
+    }
+    el('text', { x: m.l + iw / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 13 }, asvg).textContent = 'z = β₀ + β₁x₁ + β₂x₂';
+    const g = el('g', { 'clip-path': 'url(#clipA)' }, asvg);
+    const stepPath = `M${px(-Z)},${py(0)} L${px(0)},${py(0)} L${px(0)},${py(1)} L${px(Z)},${py(1)}`;
+    let sp = ''; for (let i = 0; i <= 200; i++) { const z = -Z + 2 * Z * i / 200; sp += (i ? 'L' : 'M') + px(z) + ',' + py(sig(z)); }
+    const main = MODE === 'logistic' ? sp : stepPath, ghost = MODE === 'logistic' ? stepPath : sp;
+    el('path', { d: ghost, fill: 'none', stroke: '#9ca3af', 'stroke-width': 1.5, 'stroke-dasharray': '4 4' }, g);
+    el('path', { d: main, fill: 'none', stroke: '#111827', 'stroke-width': 2.5 }, g);
+    el('text', { x: m.l + 4, y: m.t - 6, 'font-size': 13, 'font-weight': 'bold' }, asvg).textContent =
+      MODE === 'logistic' ? 'p = σ(z) = 1 / (1 + e^(−z))' : 'ŷ = step(z) = 1 if z ≥ 0, else 0';
+    // data: each point at its z, at height y (0/1), with a line to the model output
+    DATA.forEach(([x1, x2, y], i) => {
+      const z = Math.max(-Z, Math.min(Z, zOf(beta, x1, x2)));
+      const out = MODE === 'logistic' ? sig(z) : (z >= 0 ? 1 : 0);
+      el('line', { x1: px(z), x2: px(z), y1: py(y), y2: py(out), stroke: (out >= 0.5 ? 1 : 0) === y ? '#9ca3af' : 'var(--err)', 'stroke-width': 1.2 }, g);
+      el('circle', { cx: px(z), cy: py(y), r: 4.5, fill: y ? 'var(--c1)' : 'var(--c0)', stroke: '#111827', 'stroke-width': 1, 'fill-opacity': 0.9 }, g);
+      if (i === highlight) el('circle', { cx: px(z), cy: py(y), r: 9, fill: 'none', stroke: '#2563eb', 'stroke-width': 2.5 }, g);
+    });
+    if (probe) {
+      const z = zOf(beta, probe[0], probe[1]), zc = Math.max(-Z, Math.min(Z, z));
+      const out = MODE === 'logistic' ? sig(z) : (z >= 0 ? 1 : 0);
+      el('circle', { cx: px(zc), cy: py(out), r: 5, fill: '#2563eb' }, g);
+    }
+  }
+
+  // ---------- losses ----------
+  function stats() {
+    let err = 0, nll = 0, perc = 0;
+    for (const [x1, x2, y] of DATA) {
+      const z = zOf(beta, x1, x2);
+      if ((z >= 0 ? 1 : 0) !== y) err++;
+      perc += Math.max(0, -(2 * y - 1) * z);
+      nll += -(y ? Math.log(Math.max(1e-12, sig(z))) : Math.log(Math.max(1e-12, 1 - sig(z))));
+    }
+    return { err, nll: nll / DATA.length, perc };
+  }
+
+  // ---------- UI ----------
+  const sl = [0, 1, 2].map(i => document.getElementById('b' + i)), slv = [0, 1, 2].map(i => document.getElementById(`b${i}v`));
+  const colorBy = document.getElementById('colorBy'), dataSel = document.getElementById('data');
+  if (MODE === 'logistic') colorBy.style.display = 'none';
+  const fmt = v => (v < 0 ? '−' : '') + Math.abs(v).toFixed(2);
+  function render() {
+    sl.forEach((s, i) => { s.value = beta[i]; slv[i].textContent = fmt(beta[i]); });
+    const sgn = v => (v < 0 ? ' − ' : ' + ') + Math.abs(v).toFixed(2);
+    document.getElementById('eq').innerHTML =
+      `z = <span class="b0">${fmt(beta[0])}</span><span class="b1">${sgn(beta[1])}</span>·x₁<span class="b2">${sgn(beta[2])}</span>·x₂`;
+    drawHeat(); drawPlane(); drawAct();
+    const s = stats();
+    document.getElementById('stats').innerHTML = (msg ? `<b style="color:#2563eb">${msg}</b><br>` : '') + (MODE === 'logistic'
+      ? `step <b>${iter}</b> · misclassified <b>${s.err}</b>/${DATA.length} · log loss <b>${s.nll.toFixed(3)}</b> · ‖β‖ <b>${norm(beta).toFixed(2)}</b>`
+      : (highlight >= 0 ? `update ${iter} used the circled point (y=${DATA[highlight][2]}): β ← β ${DATA[highlight][2] ? '+' : '−'} η·(1, x₁, x₂)<br>` : '') + `update <b>${iter}</b> · misclassified <b>${s.err}</b>/${DATA.length} · perceptron loss <b>${s.perc.toFixed(2)}</b> · ‖β‖ <b>${norm(beta).toFixed(2)}</b>`);
+  }
+  sl.forEach((s, i) => s.addEventListener('input', () => { stop(); beta[i] = +s.value; highlight = -1; msg = ''; render(); }));
+  colorBy.addEventListener('change', render);
+  dataSel.addEventListener('change', () => { DATA = dataSel.value === 'sep' ? SEP : overlapData(); doReset(); });
+
+  // ---------- training ----------
+  const clampB = b => b.map((v, i) => Math.max(+sl[i].min, Math.min(+sl[i].max, v)));
+  let cursor = 0;
+  function perceptronStep() {
+    // perceptron rule: take the next misclassified point, β ← β + η·(2y−1)·(1, x₁, x₂)
+    const n = DATA.length, eta = 0.2;
+    if (iter >= 200) { highlight = -1; return null; }
+    for (let k = 0; k < n; k++) {
+      const i = (cursor + k) % n, [x1, x2, y] = DATA[i];
+      if ((zOf(beta, x1, x2) >= 0 ? 1 : 0) !== y) {
+        const s = 2 * y - 1; cursor = (i + 1) % n; highlight = i;
+        return clampB([beta[0] + eta * s, beta[1] + eta * s * x1, beta[2] + eta * s * x2]);
+      }
+    }
+    highlight = -1; return null;
+  }
+  function logisticStep() {
+    // gradient descent on the mean log loss
+    const eta = 1.0, g = [0, 0, 0];
+    for (const [x1, x2, y] of DATA) { const r = sig(zOf(beta, x1, x2)) - y; g[0] += r; g[1] += r * x1; g[2] += r * x2; }
+    const n = DATA.length;
+    if (Math.hypot(...g) / n < 1e-3 || iter >= 500) return null;
+    return clampB(beta.map((b, i) => b - eta * g[i] / n));
+  }
+  function tween(to, ms, done) {
+    const from = beta.slice(), t0 = performance.now();
+    const f = now => { const t = Math.min(1, (now - t0) / ms), e = t * (2 - t);
+      beta = from.map((v, i) => v + e * (to[i] - v)); render(); if (t < 1) requestAnimationFrame(f); else done && done(); };
+    requestAnimationFrame(f);
+  }
+  function doStep(cb) {
+    const nb = MODE === 'logistic' ? logisticStep() : perceptronStep();
+    if (!nb || nb.every((v, i) => Math.abs(v - beta[i]) < 1e-9)) {
+      const s = stats();
+      msg = MODE === 'perceptron'
+        ? (s.err === 0 ? 'Converged: no point is misclassified, so the perceptron stops.' : 'Not separable: the perceptron never stops (stopped after 200 updates).')
+        : (s.err === 0 && iter >= 500 ? 'Separable data: the loss keeps falling, ‖β‖ keeps growing (no finite MLE).' : 'Converged: the gradient is ≈ 0.');
+      render(); return cb && cb(false);
+    }
+    msg = '';
+    iter++;
+    if (MODE === 'logistic') { beta = nb; render(); cb && cb(true); }
+    else tween(nb, 350, () => cb && cb(true));
+  }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } playBtn.textContent = '▶ Train'; }
+  const playBtn = document.getElementById('play');
+  function loop() {
+    doStep(ok => { if (!ok || !timer) return stop(); timer = setTimeout(loop, MODE === 'logistic' ? 10 : 250); });
+  }
+  playBtn.addEventListener('click', () => { if (timer) return stop(); timer = 1; playBtn.textContent = '❚❚ Pause'; loop(); });
+  document.getElementById('step').addEventListener('click', () => { stop(); doStep(); });
+  function doReset() { stop(); beta = START.slice(); iter = 0; msg = ''; cursor = 0; highlight = -1; render(); }
+  document.getElementById('reset').addEventListener('click', doReset);
+
+  // ---------- hover ----------
+  psvg.addEventListener('mousemove', e => {
+    const r = psvg.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (x < M.l || x > M.l + G.iw || y < M.t || y > M.t + G.ih) { probe = null; } else probe = [G.ix(x), G.iy(y)];
+    drawPlane(); drawAct();
+  });
+  psvg.addEventListener('mouseleave', () => { probe = null; drawPlane(); drawAct(); });
+
+  new ResizeObserver(() => { layout(); render(); }).observe(plane);
+  layout(); render();
+})();
+</script>
+</body>
+</html>
