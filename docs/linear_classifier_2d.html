@@ -72,7 +72,18 @@
 (() => {
   const params = new URLSearchParams(location.search);
   const MODE = params.get('mode') === 'logistic' ? 'logistic' : 'perceptron';
-  if (params.get('embed') === '1') document.body.classList.add('embed');
+  if (params.get('embed') === '1') {
+    document.body.classList.add('embed');
+    // In a slide (iframe) the step keys belong to the deck: pass them on to the parent
+    // (Slidev presenter addon, message 'slidev-step') instead of moving a slider.
+    const STEP_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '];
+    window.addEventListener('keydown', e => {
+      if (!STEP_KEYS.includes(e.key) || window.parent === window) return;
+      e.preventDefault();
+      if (document.activeElement) document.activeElement.blur();
+      window.parent.postMessage({ type: 'slidev-step', key: e.key }, '*');
+    }, true);
+  }
   document.getElementById(MODE === 'logistic' ? 'tabL' : 'tabP').classList.add('on');
   document.getElementById('sub').textContent = MODE === 'logistic'
     ? 'z = β₀ + β₁x₁ + β₂x₂ and p = σ(z). The decision boundary is the line z = 0 (p = 0.5). The colour shows p. Hover over the plane to see z and p of a point.'
