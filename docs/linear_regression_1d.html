@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Linear Regression: Line and MSE</title>
+  <style>
+    :root {
+      --bg: #ffffff; --text: #1f2937; --muted: #6b7280; --grid: #e5e7eb;
+      --panel: #f8fafc; --border: #e5e7eb; --accent: #2563eb;
+      --line: #9b72aa; --res: #5fa8a8; --a: #2563eb; --b: #b45309; --hi: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: Arial, Helvetica, sans-serif; }
+    header { padding: 16px 20px 4px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .tabs { display: flex; gap: 6px; margin-top: 10px; }
+    .tabs a { padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px;
+      text-decoration: none; color: var(--text); font-size: 14px; }
+    .tabs a.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: 14px; padding: 10px 20px 20px; height: calc(100vh - 110px); min-height: 420px; }
+    body.embed main { height: 100vh; padding: 6px; gap: 12px; min-height: 0; }
+    body.embed header { display: none; }
+    .plot { position: relative; min-height: 0; }
+    .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+    .eq { font-size: 18px; padding: 6px 10px; background: var(--panel);
+      border: 1px solid var(--border); border-radius: 8px; font-variant-numeric: tabular-nums;
+      white-space: nowrap; overflow: hidden; }
+    .eq .a { color: var(--a); font-weight: bold; } .eq .b { color: var(--b); font-weight: bold; }
+    .sl { display: grid; grid-template-columns: 22px 1fr 58px; align-items: center; gap: 8px; font-size: 17px; }
+    .sl input { width: 100%; }
+    .sl .v { text-align: right; font-variant-numeric: tabular-nums; }
+    .sl .n { font-style: italic; font-weight: bold; }
+    .fig { position: relative; flex: 1 1 auto; min-height: 140px; }
+    .fig canvas, .fig svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    button { font: inherit; font-size: 14px; padding: 4px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    .stats { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .stats b { color: var(--text); }
+    text { font-family: Arial, Helvetica, sans-serif; }
+    .hide { display: none !important; }
+    @media (max-width: 720px) {
+      main { grid-template-columns: 1fr; height: auto; padding: 10px 16px 20px; }
+      .plot { height: 62vh; min-height: 320px; }
+      .fig { height: 280px; flex: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Linear regression: blood pressure given age</h1>
+    <p id="sub"></p>
+    <div class="tabs"><a href="?mode=line" id="tabLine">The line ŷ = a·x + b</a><a href="?mode=mse" id="tabMse">The loss: MSE</a></div>
+  </header>
+  <main>
+    <div class="plot" id="plot"><svg id="psvg"></svg></div>
+    <div class="side">
+      <div class="eq" id="eq"></div>
+      <div class="sl"><span class="n" style="color:var(--a)">a</span><input type="range" id="sa" min="-1" max="3" step="0.01"><span class="v" id="va"></span></div>
+      <div class="sl"><span class="n" style="color:var(--b)">b</span><input type="range" id="sb" min="0" max="200" step="0.5"><span class="v" id="vb"></span></div>
+      <div class="fig" id="fig"><canvas id="land"></canvas><svg id="fsvg"></svg></div>
+      <div class="btns" id="btns">
+        <button id="fit">▶ Least squares fit</button><button id="sq">□ squares</button><button id="reset">Reset</button>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const MODE = params.get('mode') === 'mse' ? 'mse' : 'line';
+  const EMBED = params.get('embed') === '1';
+  if (EMBED) {
+    document.body.classList.add('embed');
+    // In a slide (iframe) the step keys belong to the deck: pass them on to the parent
+    // (Slidev presenter addon, message 'slidev-step') instead of moving a slider.
+    const STEP_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '];
+    window.addEventListener('keydown', e => {
+      if (!STEP_KEYS.includes(e.key) || window.parent === window) return;
+      e.preventDefault();
+      if (document.activeElement) document.activeElement.blur();
+      window.parent.postMessage({ type: 'slidev-step', key: e.key }, '*');
+    }, true);
+  }
+  document.getElementById(MODE === 'mse' ? 'tabMse' : 'tabLine').classList.add('on');
+  for (const t of document.querySelectorAll('.tabs a')) t.href += EMBED ? '&embed=1' : '';
+  document.getElementById('sub').textContent = MODE === 'mse'
+    ? 'The residuals yᵢ − ŷᵢ (teal) are what the line gets wrong. The MSE averages their squares. Right: the MSE for every pair (a, b); click or drag there to move the line.'
+    : 'Move the slope a and the intercept b. Hover over the plot to read off the predicted blood pressure ŷ for an age x.';
+  if (MODE === 'line') document.getElementById('btns').classList.add('hide');
+
+  // ---------- data ----------
+  // Systolic blood pressure (sbp) and age of 33 women, Probabilistic Deep Learning (Dürr, Sick, Murina), chapter 3
+  // https://raw.githubusercontent.com/tensorchiefs/data/main/data/sbp.csv
+  const X = [22,41,52,23,41,54,24,46,56,27,47,57,28,48,58,9,49,59,30,49,63,32,50,67,33,51,71,35,51,77,40,51,81];
+  const Y = [131,139,128,128,171,105,116,137,145,106,111,141,114,115,153,123,133,157,117,128,155,122,183,176,99,130,172,121,133,178,147,144,217];
+  const n = X.length;
+  const mean = v => v.reduce((s, t) => s + t, 0) / v.length;
+  const mx = mean(X), my = mean(Y);
+  const Sxx = mean(X.map(x => x * x)), Sxy = mean(X.map((x, i) => x * Y[i])), Syy = mean(Y.map(y => y * y));
+  const A_OLS = (Sxy - mx * my) / (Sxx - mx * mx), B_OLS = my - A_OLS * mx;
+  // MSE(a, b) in closed form from the moments
+  const mse = (a, b) => Syy - 2 * a * Sxy - 2 * b * my + a * a * Sxx + 2 * a * b * mx + b * b;
+  const MSE_MIN = mse(A_OLS, B_OLS);
+
+  const START = [1.0, 100];
+  let a = START[0], b = START[1];
+  let probe = null;      // hovered age (line mode) or index of hovered point (mse mode)
+  let trail = [];        // recent (a, b) positions for the loss landscape
+  let anim = null;
+  let squares = false;
+  const MARK = X.indexOf(81);
+
+  const DOM = { x: [0, 100], y: [80, 230] };
+  const sa = document.getElementById('sa'), sb = document.getElementById('sb');
+  const fmt = (v, d) => (v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+  const NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, parent, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // ---------- scatter plot ----------
+  const plot = document.getElementById('plot'), psvg = document.getElementById('psvg');
+  const M = { l: 58, r: 16, t: 12, b: 48 };
+  let P = null;
+  function layoutPlot() {
+    const W = plot.clientWidth, H = plot.clientHeight;
+    const iw = W - M.l - M.r, ih = H - M.t - M.b;
+    P = { W, H, iw, ih,
+      sx: x => M.l + (x - DOM.x[0]) / (DOM.x[1] - DOM.x[0]) * iw,
+      sy: y => M.t + (DOM.y[1] - y) / (DOM.y[1] - DOM.y[0]) * ih,
+      ix: px => DOM.x[0] + (px - M.l) / iw * (DOM.x[1] - DOM.x[0]) };
+  }
+  function drawPlot() {
+    const { W, H, iw, ih, sx, sy } = P;
+    psvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    psvg.innerHTML = '';
+    const defs = el('defs', {}, psvg);
+    el('rect', { x: M.l, y: M.t, width: iw, height: ih }, el('clipPath', { id: 'clip' }, defs));
+    // grid and axes
+    for (let y = 100; y <= DOM.y[1]; y += 50) {
+      el('line', { x1: M.l, x2: M.l + iw, y1: sy(y), y2: sy(y), stroke: '#d9d9d9' }, psvg);
+      el('text', { x: M.l - 8, y: sy(y) + 5, 'text-anchor': 'end', 'font-size': 15, fill: '#555' }, psvg, y);
+    }
+    for (let x = 0; x <= 100; x += 25)
+      el('text', { x: sx(x), y: M.t + ih + 20, 'text-anchor': 'middle', 'font-size': 15, fill: '#555' }, psvg, x);
+    el('text', { x: M.l + iw / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 17 }, psvg, 'x (age)');
+    el('text', { x: 16, y: M.t + ih / 2, 'text-anchor': 'middle', 'font-size': 17,
+      transform: `rotate(-90 16 ${M.t + ih / 2})` }, psvg, 'y (sbp)');
+
+    const g = el('g', { 'clip-path': 'url(#clip)' }, psvg);
+    // residuals
+    if (MODE === 'mse') {
+      X.forEach((x, i) => {
+        const yh = a * x + b;
+        el('line', { x1: sx(x), x2: sx(x), y1: sy(Y[i]), y2: sy(yh), stroke: i === probe ? 'var(--hi)' : 'var(--res)',
+          'stroke-width': i === probe ? 3 : 2 }, g);
+      });
+    }
+    if (MODE === 'mse' && squares) {
+      X.forEach((x, i) => {
+        const y0 = sy(Y[i]), y1 = sy(a * x + b), side = Math.abs(y1 - y0);
+        el('rect', { x: sx(x) - (x > 60 ? side : 0), y: Math.min(y0, y1), width: side, height: side,
+          fill: 'var(--res)', 'fill-opacity': 0.16, stroke: 'var(--res)', 'stroke-opacity': 0.6 }, g);
+      });
+    }
+    // regression line
+    el('line', { x1: sx(DOM.x[0]), x2: sx(DOM.x[1]), y1: sy(a * DOM.x[0] + b), y2: sy(a * DOM.x[1] + b),
+      stroke: 'var(--line)', 'stroke-width': 4 }, g);
+    // data
+    X.forEach((x, i) => el('circle', { cx: sx(x), cy: sy(Y[i]), r: 4.2, fill: i === probe ? 'var(--hi)' : '#111' }, g));
+
+    if (MODE === 'line' && probe !== null) {
+      const yh = a * probe + b;
+      if (yh > DOM.y[0] && yh < DOM.y[1]) {
+        el('line', { x1: sx(probe), x2: sx(probe), y1: M.t + ih, y2: sy(yh), stroke: '#555', 'stroke-dasharray': '4 4' }, psvg);
+        el('line', { x1: M.l, x2: sx(probe), y1: sy(yh), y2: sy(yh), stroke: '#555', 'stroke-dasharray': '4 4' }, psvg);
+        el('circle', { cx: sx(probe), cy: sy(yh), r: 6, fill: 'var(--line)', stroke: '#fff', 'stroke-width': 2 }, psvg);
+        label(sx(probe), sy(yh) - 14, `age ${probe.toFixed(0)} → ŷ = ${yh.toFixed(0)}`);
+      }
+    }
+    if (MODE === 'mse') {
+      // label one point as in the book figure: the hovered point, else the oldest person (x = 81)
+      const i = probe === null ? MARK : probe;
+      const yh = a * X[i] + b, px = sx(X[i]);
+      const ty = Math.min(M.t + ih - 4, Math.max(M.t + 16, sy(Y[i]) + 6));
+      const th = Math.min(M.t + ih - 4, Math.max(M.t + 16, sy(yh) + 6));
+      const right = px < M.l + iw - 40, anchor = right ? 'start' : 'end', dx = right ? 9 : -9;
+      if (Math.abs(ty - th) > 18) {
+        el('text', { x: px + dx, y: ty, 'text-anchor': anchor, 'font-size': 18 }, psvg, 'yᵢ');
+        el('text', { x: px + dx, y: th, 'text-anchor': anchor, 'font-size': 18 }, psvg, 'ŷᵢ');
+      }
+    }
+  }
+  function label(x, y, t, anchor = 'middle') {
+    const tx = el('text', { x, y, 'text-anchor': anchor, 'font-size': 15, 'font-weight': 'bold', fill: '#111' }, psvg, t);
+    const bb = tx.getBBox();
+    let shift = 0;
+    if (bb.x < 2) shift = 2 - bb.x; else if (bb.x + bb.width > P.W - 2) shift = P.W - 2 - bb.x - bb.width;
+    if (shift) tx.setAttribute('x', x + shift);
+    const r = el('rect', { x: bb.x + shift - 4, y: bb.y - 2, width: bb.width + 8, height: bb.height + 4, rx: 4,
+      fill: 'rgba(255,255,255,0.88)' }, null);
+    psvg.insertBefore(r, tx);
+  }
+
+  // ---------- side figure: neuron (line mode) or loss landscape (mse mode) ----------
+  const fig = document.getElementById('fig'), land = document.getElementById('land'), fsvg = document.getElementById('fsvg');
+  const LM = { l: 46, r: 10, t: 22, b: 40 };
+  const ADOM = [+sa.min, +sa.max], BDOM = [+sb.min, +sb.max];
+  let L = null;
+  function layoutFig() {
+    const W = fig.clientWidth, H = fig.clientHeight, iw = W - LM.l - LM.r, ih = H - LM.t - LM.b;
+    L = { W, H, iw, ih,
+      sa: v => LM.l + (v - ADOM[0]) / (ADOM[1] - ADOM[0]) * iw,
+      sb: v => LM.t + (BDOM[1] - v) / (BDOM[1] - BDOM[0]) * ih,
+      ia: px => ADOM[0] + (px - LM.l) / iw * (ADOM[1] - ADOM[0]),
+      ib: py => BDOM[1] - (py - LM.t) / ih * (BDOM[1] - BDOM[0]) };
+    if (MODE === 'mse') drawLandscape();
+  }
+  // light at the minimum, dark purple for large loss (log scale)
+  const SEQ = [[255,255,255],[236,231,242],[208,190,224],[170,140,200],[128,90,170],[88,50,130],[50,20,80]];
+  function seq(t) {
+    t = Math.min(1, Math.max(0, t)) * (SEQ.length - 1);
+    const i = Math.min(SEQ.length - 2, Math.floor(t)), f = t - i;
+    return SEQ[i].map((c, k) => c + f * (SEQ[i + 1][k] - c));
+  }
+  const LOGMAX = Math.log(mse(ADOM[0], BDOM[0]) / MSE_MIN);
+  const LEVELS = [1.25, 1.5, 2, 3, 5, 10, 20, 50];   // contours at multiples of the minimal MSE
+  function drawLandscape() {
+    const dpr = window.devicePixelRatio || 1, { W, H, iw, ih } = L;
+    land.width = Math.round(W * dpr); land.height = Math.round(H * dpr);
+    const ctx = land.getContext('2d');
+    const pw = Math.round(iw * dpr), ph = Math.round(ih * dpr);
+    if (pw <= 2 || ph <= 2) return;
+    const img = ctx.createImageData(pw, ph), lev = new Int8Array(pw * ph);
+    const logLev = LEVELS.map(Math.log);
+    for (let j = 0; j < ph; j++) {
+      const bv = BDOM[1] - (j + 0.5) / ph * (BDOM[1] - BDOM[0]);
+      for (let i = 0; i < pw; i++) {
+        const av = ADOM[0] + (i + 0.5) / pw * (ADOM[1] - ADOM[0]);
+        const lr = Math.log(mse(av, bv) / MSE_MIN);
+        let k = 0; while (k < logLev.length && lr > logLev[k]) k++;
+        lev[j * pw + i] = k;
+        const c = seq(Math.sqrt(lr / LOGMAX)), o = 4 * (j * pw + i);
+        img.data[o] = c[0]; img.data[o + 1] = c[1]; img.data[o + 2] = c[2]; img.data[o + 3] = 255;
+      }
+    }
+    // contour lines where the level index changes
+    for (let j = 0; j < ph - 1; j++) for (let i = 0; i < pw - 1; i++) {
+      const k = lev[j * pw + i];
+      if (k !== lev[j * pw + i + 1] || k !== lev[(j + 1) * pw + i]) {
+        const o = 4 * (j * pw + i), d = k < 4 ? 120 : 235;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = d;
+      }
+    }
+    ctx.putImageData(img, Math.round(LM.l * dpr), Math.round(LM.t * dpr));
+  }
+  function drawFig() {
+    const { W, H, iw, ih } = L;
+    fsvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    fsvg.innerHTML = '';
+    if (MODE === 'line') { land.classList.add('hide'); return drawNeuron(W, H); }
+    // axes
+    el('rect', { x: LM.l, y: LM.t, width: iw, height: ih, fill: 'none', stroke: '#999' }, fsvg);
+    for (let v = -1; v <= 3; v++)
+      el('text', { x: L.sa(v), y: LM.t + ih + 17, 'text-anchor': 'middle', 'font-size': 13, fill: '#555' }, fsvg, fmt(v, 0));
+    for (let v = 0; v <= 200; v += 50)
+      el('text', { x: LM.l - 6, y: L.sb(v) + 4, 'text-anchor': 'end', 'font-size': 13, fill: '#555' }, fsvg, v);
+    el('text', { x: LM.l + iw / 2, y: H - 4, 'text-anchor': 'middle', 'font-size': 16, 'font-style': 'italic',
+      'font-weight': 'bold', fill: 'var(--a)' }, fsvg, 'a');
+    el('text', { x: 12, y: LM.t + ih / 2, 'text-anchor': 'middle', 'font-size': 16, 'font-style': 'italic',
+      'font-weight': 'bold', fill: 'var(--b)' }, fsvg, 'b');
+    el('text', { x: LM.l, y: 15, 'font-size': 14, fill: '#333' }, fsvg, 'MSE(a, b): light = small loss');
+    // trail and current position
+    if (trail.length > 1)
+      el('polyline', { points: trail.map(([ta, tb]) => `${L.sa(ta)},${L.sb(tb)}`).join(' '), fill: 'none',
+        stroke: 'var(--hi)', 'stroke-width': 1.5, 'stroke-opacity': 0.55 }, fsvg);
+    const cx = L.sa(a), cy = L.sb(b);
+    if (cx >= LM.l && cx <= LM.l + iw && cy >= LM.t && cy <= LM.t + ih)
+      el('circle', { cx, cy, r: 6.5, fill: 'var(--hi)', stroke: '#fff', 'stroke-width': 2 }, fsvg);
+    if (anim === 'done' || Math.hypot(a - A_OLS, (b - B_OLS) / 50) < 0.02) {
+      const mxp = L.sa(A_OLS), myp = L.sb(B_OLS);
+      el('path', { d: `M${mxp - 7},${myp} h14 M${mxp},${myp - 7} v14`, stroke: '#111', 'stroke-width': 2.5 }, fsvg);
+      el('text', { x: mxp + 10, y: myp - 8, 'font-size': 13, 'font-weight': 'bold' }, fsvg, 'minimum');
+    }
+  }
+  // the model as a neuron: inputs x and 1, weights a and b, output ŷ
+  function drawNeuron(W, H) {
+    const s = Math.min(W / 360, H / 210, 1.25), ox = (W - 360 * s) / 2, oy = (H - 210 * s) / 2;
+    const g = el('g', { transform: `translate(${ox},${oy}) scale(${s})` }, fsvg);
+    const node = (x, y, t, fill) => { el('circle', { cx: x, cy: y, r: 24, fill, stroke: '#555', 'stroke-width': 1.5 }, g);
+      el('text', { x, y: y + 7, 'text-anchor': 'middle', 'font-size': 21 }, g, t); };
+    el('defs', {}, g).innerHTML = '<marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto"><path d="M0,0L10,5L0,10z" fill="#555"/></marker>';
+    const wa = 1.5 + 3 * Math.min(1, Math.abs(a) / 2), wb = 1.5 + 3 * Math.min(1, Math.abs(b) / 150);
+    el('line', { x1: 64, y1: 60, x2: 170, y2: 98, stroke: 'var(--a)', 'stroke-width': wa, 'marker-end': 'url(#arr)' }, g);
+    el('line', { x1: 64, y1: 150, x2: 170, y2: 116, stroke: 'var(--b)', 'stroke-width': wb, 'marker-end': 'url(#arr)' }, g);
+    el('line', { x1: 220, y1: 107, x2: 290, y2: 107, stroke: '#555', 'stroke-width': 2, 'marker-end': 'url(#arr)' }, g);
+    node(40, 52, 'x', '#eef2ff'); node(40, 158, '1', '#fff7ed'); node(196, 107, 'Σ', '#f8fafc');
+    el('text', { x: 318, y: 115, 'text-anchor': 'middle', 'font-size': 23, 'font-weight': 'bold' }, g, 'ŷ');
+    el('text', { x: 116, y: 62, 'text-anchor': 'middle', 'font-size': 17, fill: 'var(--a)', 'font-weight': 'bold' }, g, `a = ${fmt(a, 2)}`);
+    el('text', { x: 116, y: 162, 'text-anchor': 'middle', 'font-size': 17, fill: 'var(--b)', 'font-weight': 'bold' }, g, `b = ${b.toFixed(1)}`);
+    el('text', { x: 180, y: 200, 'text-anchor': 'middle', 'font-size': 15, fill: '#555' }, g, 'Like a neural net: one neuron, no activation');
+  }
+
+  // ---------- text ----------
+  function drawText() {
+    sa.value = a; sb.value = b;
+    document.getElementById('va').textContent = fmt(a, 2);
+    document.getElementById('vb').textContent = b.toFixed(1);
+    document.getElementById('eq').innerHTML =
+      `ŷ = <span class="a">${fmt(a, 2)}</span> · x + <span class="b">${b.toFixed(1)}</span>`;
+    const st = document.getElementById('stats');
+    if (MODE === 'line') {
+      st.innerHTML = `a: change of ŷ per year of age &nbsp;·&nbsp; b: ŷ at age 0`;
+    } else {
+      const m = mse(a, b);
+      const i = probe === null ? MARK : probe, yh = a * X[i] + b;
+      st.innerHTML = `marked point: (yᵢ − ŷᵢ)² = (${Y[i]} − ${yh.toFixed(1)})² = ${((Y[i] - yh) ** 2).toFixed(0)}<br>` +
+        `MSE = <sup>1</sup>⁄<sub>n</sub> Σ (yᵢ − ŷᵢ)² = <b>${m.toFixed(1)}</b> &nbsp; (n = ${n})<br>` +
+        `least squares: a = ${A_OLS.toFixed(2)}, b = ${B_OLS.toFixed(1)}, MSE = ${MSE_MIN.toFixed(1)}`;
+    }
+  }
+  function render() {
+    if (MODE === 'mse') {
+      const last = trail[trail.length - 1];
+      if (!last || last[0] !== a || last[1] !== b) trail.push([a, b]);
+      if (trail.length > 400) trail.shift();
+    }
+    drawPlot(); drawFig(); drawText();
+  }
+
+  // ---------- interaction ----------
+  function stopAnim() { if (anim && anim !== 'done') cancelAnimationFrame(anim); anim = null; }
+  sa.addEventListener('input', () => { stopAnim(); a = +sa.value; render(); });
+  sb.addEventListener('input', () => { stopAnim(); b = +sb.value; render(); });
+  document.getElementById('reset').addEventListener('click', () => {
+    stopAnim(); a = START[0]; b = START[1]; trail = []; render(); });
+  document.getElementById('fit').addEventListener('click', () => {
+    stopAnim();
+    const a0 = a, b0 = b, t0 = performance.now(), T = 1200;
+    const tick = now => {
+      const t = Math.min(1, (now - t0) / T), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      a = a0 + e * (A_OLS - a0); b = b0 + e * (B_OLS - b0);
+      anim = t < 1 ? requestAnimationFrame(tick) : 'done';
+      render();
+    };
+    anim = requestAnimationFrame(tick);
+  });
+  const sqBtn = document.getElementById('sq');
+  sqBtn.addEventListener('click', () => { squares = !squares; sqBtn.textContent = squares ? '■ squares' : '□ squares'; drawPlot(); });
+  // drag in the landscape sets (a, b)
+  let dragging = false;
+  function fromLand(e) {
+    const r = fsvg.getBoundingClientRect();
+    const av = L.ia(e.clientX - r.left), bv = L.ib(e.clientY - r.top);
+    if (av < ADOM[0] || av > ADOM[1] || bv < BDOM[0] || bv > BDOM[1]) return;
+    stopAnim(); a = Math.round(av * 100) / 100; b = Math.round(bv * 2) / 2; render();
+  }
+  if (MODE === 'mse') {
+    fsvg.style.cursor = 'crosshair';
+    fsvg.addEventListener('pointerdown', e => { dragging = true; fsvg.setPointerCapture(e.pointerId); fromLand(e); });
+    fsvg.addEventListener('pointermove', e => { if (dragging) fromLand(e); });
+    fsvg.addEventListener('pointerup', () => { dragging = false; });
+  }
+  // hover in the scatter plot
+  psvg.addEventListener('mousemove', e => {
+    const r = psvg.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    if (MODE === 'line') {
+      const x = Math.round(P.ix(px));
+      probe = px >= M.l && px <= M.l + P.iw && x >= 0 && x <= 100 ? x : null;
+    } else {
+      let best = 1e9, k = null;
+      X.forEach((x, i) => { const d = Math.hypot(P.sx(x) - px, P.sy(Y[i]) - py); if (d < best) { best = d; k = i; } });
+      probe = best < 30 ? k : null;
+    }
+    drawPlot(); drawText();
+  });
+  psvg.addEventListener('mouseleave', () => { probe = null; drawPlot(); drawText(); });
+
+  new ResizeObserver(() => { layoutPlot(); drawPlot(); }).observe(plot);
+  new ResizeObserver(() => { layoutFig(); drawFig(); }).observe(fig);
+  layoutPlot(); layoutFig(); render();
+})();
+</script>
+</body>
+</html>
