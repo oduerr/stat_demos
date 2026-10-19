@@ -13,6 +13,20 @@
     .segmented .pill { position: absolute; top: 2px; left: 2px; width: calc(50% - 4px); height: calc(100% - 4px); border-radius: 999px; background: linear-gradient(180deg, #93c5fd, #60a5fa); box-shadow: 0 6px 14px rgba(59,130,246,0.35); transform: translateX(0%); transition: transform 0.18s ease; pointer-events: none; }
     .segmented button { appearance: none; background: transparent; border: 0; padding: 8px 16px; color: var(--muted); font-weight: 700; cursor: pointer; z-index: 1; position: relative; font-size: 14px; }
     .segmented button[aria-selected="true"] { color: #0ea5e9; }
+    /* ?embed=1: inside a slide (iframe) — no title, no table, everything fits the frame */
+    body.embed header { padding: 6px 10px 2px; }
+    body.embed .title, body.embed .subtitle { display: none; }
+    body.embed #modeSwitch { margin-top: 0 !important; }
+    body.embed main { padding: 4px 10px 6px; }
+    body.embed .grid { grid-template-columns: 1.3fr 1fr; gap: 10px; }
+    body.embed .table-wrap { display: none; }
+    body.embed .card-header { padding: 6px 12px; }
+    body.embed .card-body { padding: 8px 12px; }
+    body.embed .plot-wrap { height: calc(100vh - 150px); }
+    body.embed .legend { display: none; }
+    body.embed .buttons { margin-top: 4px !important; }
+    body.embed .card { height: calc(100vh - 52px); display: flex; flex-direction: column; }
+    body.embed .card-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   </style>
 </head>
 <body>
@@ -152,6 +166,18 @@
   </main>
 
   <script>
+    // ?embed=1 (in a slide): compact layout, and the step keys go to the deck (Slidev presenter
+    // addon, message 'slidev-step') instead of switching the mode or moving a slider.
+    if (new URLSearchParams(location.search).get('embed') === '1') {
+      document.body.classList.add('embed');
+      const STEP_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '];
+      window.addEventListener('keydown', e => {
+        if (!STEP_KEYS.includes(e.key) || window.parent === window) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (document.activeElement) document.activeElement.blur();
+        window.parent.postMessage({ type: 'slidev-step', key: e.key }, '*');
+      }, true);
+    }
     // ------- Data and state -------
     let xData, yData;
     let state = { w: 1.0, b: 1.0, sigma: 1.0, mode: 'ls' };
@@ -712,7 +738,7 @@
     // Init
     function init(){
       generateInitialData();
-      setMode('ls');
+      setMode(new URLSearchParams(location.search).get('mode') === 'mle' ? 'mle' : 'ls');
     }
     init();
   </script>
