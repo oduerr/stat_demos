@@ -8,6 +8,12 @@
   <style>
     /* Ensure Greek labels render as lowercase, overriding shell's uppercase labels */
     .controls .row label { text-transform: none; }
+    /* ?embed=1: inside a slide (iframe) — no title, no table, everything fits the frame */
+    body.embed header, body.embed .card-header, body.embed .table-wrap, body.embed .legend { display: none; }
+    body.embed main { padding: 4px 10px 6px; }
+    body.embed .grid { grid-template-columns: 1.6fr 1fr; gap: 10px; }
+    body.embed .card-body { padding: 8px 12px; }
+    body.embed .plot-wrap { height: calc(100vh - 34px); }
   </style>
 </head>
 <body>
@@ -170,7 +176,7 @@
       svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
       svg.innerHTML = '';
 
-      const pad = { l: 48, r: 16, t: 16, b: 36 };
+      const pad = { l: 64, r: 16, t: 16, b: 36 };
       const innerW = width - pad.l - pad.r;
       const innerH = height - pad.t - pad.b;
 
@@ -262,7 +268,7 @@
         const x = xScale(v);
         const t = document.createElementNS('http://www.w3.org/2000/svg','text');
         t.setAttribute('x', x);
-        t.setAttribute('y', height - 10);
+        t.setAttribute('y', height - 18);
         t.setAttribute('text-anchor', 'middle');
         t.setAttribute('fill', '#9ca3af');
         t.setAttribute('font-size', '12');
@@ -272,9 +278,9 @@
       yTicks.forEach(v=>{
         const y = yScale(v);
         const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-        t.setAttribute('x', 8);
+        t.setAttribute('x', pad.l - 6);
         t.setAttribute('y', y + 4);
-        t.setAttribute('text-anchor', 'start');
+        t.setAttribute('text-anchor', 'end');
         t.setAttribute('fill', '#9ca3af');
         t.setAttribute('font-size', '12');
         t.textContent = (Math.abs(v) < 1e-8 ? 0 : v).toFixed(2);
@@ -395,6 +401,19 @@
     });
 
     window.addEventListener('resize', ()=> render());
+
+    // ?embed=1: in a slide the step keys belong to the deck — pass them on to the parent
+    // (Slidev presenter addon, message 'slidev-step') instead of moving a slider.
+    if (new URLSearchParams(location.search).get('embed') === '1') {
+      document.body.classList.add('embed');
+      const STEP_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '];
+      window.addEventListener('keydown', e => {
+        if (!STEP_KEYS.includes(e.key) || window.parent === window) return;
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (document.activeElement) document.activeElement.blur();
+        window.parent.postMessage({ type: 'slidev-step', key: e.key }, '*');
+      }, true);
+    }
 
     // Init
     function init(){
