@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Likelihood → log-likelihood → NLL: same θ̂</title>
+<style>
+  :root { --ink: #1f2937; --muted: #6b7280; --grid: #e5e7eb; --curve: #2563eb; --hat: #c0392b; --bg: #ffffff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: 100%; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+  .steps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .steps button { font: inherit; font-size: 14px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--grid); background: #f9fafb; color: var(--muted); cursor: pointer; }
+  .steps button.on { border-color: var(--curve); color: var(--curve); background: #eff6ff; font-weight: 600; }
+  .steps .ctl { margin-left: auto; }
+  #wrap { flex: 1; min-height: 240px; position: relative; }
+  svg { width: 100%; height: 100%; display: block; }
+  text { font-family: inherit; }
+  body.embed main { padding: 4px 6px; max-width: none; }
+  body.embed h1, body.embed .sub { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Likelihood, log-likelihood, negative log-likelihood</h1>
+  <p class="sub">The log is monotone: taking it moves no maximum. Flipping the sign turns the maximum into a minimum. All three curves give the same θ̂. Data: 10 points from N(θ, 1); the curves are drawn over θ.</p>
+  <div class="steps">
+    <button data-k="0">p(D | θ)</button>
+    <button data-k="1">log p(D | θ)</button>
+    <button data-k="2">NLL(θ)</button>
+    <button class="ctl" id="play">❚❚ pause</button>
+  </div>
+  <div id="wrap"><svg id="plot"></svg></div>
+</main>
+<script>
+(() => {
+  const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+  if (EMBED) {
+    document.body.classList.add('embed');
+    // In a slide (iframe) the step keys belong to the deck: pass them on to the parent
+    // (Slidev presenter addon, message 'slidev-step').
+    const STEP_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' '];
+    window.addEventListener('keydown', e => {
+      if (!STEP_KEYS.includes(e.key) || window.parent === window) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (document.activeElement) document.activeElement.blur();
+      window.parent.postMessage({ type: 'slidev-step', key: e.key }, '*');
+    }, true);
+  }
+
+  // data (same as normal_mle.html), sigma = 1 known; parameter theta = mu
+  const xs = [-0.033, -0.76, 2.02, 1.13, 0.65, 0.49, 0.76, 0.40, 0.10, 0.61];
+  const N = xs.length, LOG2PI = Math.log(2 * Math.PI);
+  const logL = t => xs.reduce((s, x) => s - 0.5 * LOG2PI - 0.5 * (x - t) ** 2, 0);
+  const T0 = -1, T1 = 2.4, M = 300;
+  const ts = Array.from({ length: M + 1 }, (_, i) => T0 + (T1 - T0) * i / M);
+  const that = xs.reduce((a, b) => a + b, 0) / N;
+
+  // the three curves, their y ranges and labels
+  const CURVES = [
+    { f: t => Math.exp(logL(t)), lo: 0, ylab: 'p(D | θ) = ∏ p(yᵢ | θ)', hat: 'argmax', fmt: v => v === 0 ? '0' : v.toExponential(0).replace('e-', '·10⁻').replace(/⁻(\d+)/, (_, d) => '⁻' + [...d].map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[c]).join('')) },
+    { f: t => logL(t), ylab: 'log p(D | θ) = ∑ log p(yᵢ | θ)', hat: 'argmax', fmt: v => v.toFixed(0) },
+    { f: t => -logL(t) / N, ylab: 'NLL(θ) = −(1/N) ∑ log p(yᵢ | θ)', hat: 'argmin', fmt: v => v.toFixed(1) },
+  ];
+  for (const c of CURVES) {
+    c.ys = ts.map(c.f);
+    const mn = Math.min(...c.ys), mx = Math.max(...c.ys);
+    c.lo = c.lo ?? mn; c.hi = mx; const pad = (c.hi - c.lo) * 0.14;   // room for the label at a maximum
+    c.lo = c.lo === 0 ? 0 : c.lo - pad; c.hi += pad;
+    c.ny = c.ys.map(v => (v - c.lo) / (c.hi - c.lo));     // 0..1 for morphing
+    c.ticks = niceTicks(c.lo, c.hi, 4);
+  }
+  function niceTicks(a, b, n) {
+    const raw = (b - a) / n, p = 10 ** Math.floor(Math.log10(raw)), e = raw / p;
+    const step = (e >= 5 ? 5 : e >= 2 ? 2 : 1) * p, out = [];
+    for (let v = Math.ceil(a / step) * step; v <= b + 1e-12; v += step) out.push(v);
+    return out;
+  }
+
+  const svg = document.getElementById('plot'), NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+  const ease = u => u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+
+  // timeline: hold, morph, hold, morph, hold, morph back
+  const HOLD = 2600, MORPH = 1300, CYCLE = 3 * (HOLD + MORPH);
+  let t0 = performance.now(), playing = true, pausedAt = 0;
+
+  function state(ms) {
+    // the first rAF time can lie before t0
+    const u = Math.max(0, ms) % CYCLE, seg = Math.floor(u / (HOLD + MORPH)), r = u - seg * (HOLD + MORPH);
+    return r < HOLD ? { a: seg, b: seg, w: 0 } : { a: seg, b: (seg + 1) % 3, w: ease((r - HOLD) / MORPH) };
+  }
+
+  function draw(s) {
+    const W = svg.clientWidth || 600, H = svg.clientHeight || 360;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
+    const fs = Math.max(13, Math.min(18, W / 34));
+    const P = { l: fs * 4.2, r: 14, t: fs * 2.2, b: fs * 2.6 };
+    const iw = W - P.l - P.r, ih = H - P.t - P.b;
+    const X = t => P.l + (t - T0) / (T1 - T0) * iw, Y = n => P.t + (1 - n) * ih;
+    const A = CURVES[s.a], B = CURVES[s.b], w = s.w;
+
+    // axes, ticks (cross-fade when morphing)
+    el('line', { x1: P.l, x2: P.l + iw, y1: P.t + ih, y2: P.t + ih, stroke: '#9ca3af' });
+    el('line', { x1: P.l, x2: P.l, y1: P.t, y2: P.t + ih, stroke: '#9ca3af' });
+    for (let v = -1; v <= 2; v++) {
+      el('line', { x1: X(v), x2: X(v), y1: P.t + ih, y2: P.t + ih + 5, stroke: '#9ca3af' });
+      el('text', { x: X(v), y: P.t + ih + fs * 1.15, 'text-anchor': 'middle', 'font-size': fs * 0.8, fill: '#6b7280' }).textContent = v;
+    }
+    el('text', { x: P.l + iw - 4, y: P.t + ih + fs * 2.2, 'text-anchor': 'end', 'font-size': fs, fill: '#1f2937', 'font-style': 'italic' }).textContent = 'θ';
+    for (const [c, op] of (A === B ? [[A, 1]] : [[A, Math.max(0, 1 - 2 * w)], [B, Math.max(0, 2 * w - 1)]])) {
+      if (op < 0.02) continue;
+      for (const v of c.ticks) {
+        const y = Y((v - c.lo) / (c.hi - c.lo));
+        el('line', { x1: P.l, x2: P.l + iw, y1: y, y2: y, stroke: '#e5e7eb', 'stroke-dasharray': '3 4', opacity: op });
+        el('text', { x: P.l - 6, y: y + fs * 0.3, 'text-anchor': 'end', 'font-size': fs * 0.75, fill: '#6b7280', opacity: op }).textContent = c.fmt(v);
+      }
+      el('text', { x: P.l, y: fs * 1.2, 'font-size': fs * 1.05, fill: '#1f2937', 'font-weight': 600, opacity: op }).textContent = c.ylab;
+    }
+
+    // the curve, morphed in normalised coordinates
+    let d = '';
+    for (let i = 0; i <= M; i++) d += (i ? 'L' : 'M') + X(ts[i]).toFixed(1) + ' ' + Y(A.ny[i] * (1 - w) + B.ny[i] * w).toFixed(1);
+    el('path', { d, fill: 'none', stroke: '#2563eb', 'stroke-width': 3, 'stroke-linejoin': 'round' });
+
+    // theta-hat: same position on every curve
+    const j = Math.round((that - T0) / (T1 - T0) * M), yh = Y(A.ny[j] * (1 - w) + B.ny[j] * w);
+    el('line', { x1: X(that), x2: X(that), y1: P.t, y2: P.t + ih, stroke: '#c0392b', 'stroke-width': 1.5, 'stroke-dasharray': '6 5' });
+    el('circle', { cx: X(that), cy: yh, r: 6, fill: '#c0392b' });
+    // θ̂ as θ with a hat drawn above (the combining accent renders badly in many fonts)
+    const hy = P.t + ih + fs * 2.2, hx = X(that) - fs * 1.6;
+    el('text', { x: hx, y: hy, 'font-size': fs, fill: '#c0392b', 'font-weight': 600, 'font-style': 'italic' }).textContent = 'θ';
+    el('text', { x: hx + fs * 0.08, y: hy - fs * 0.62, 'font-size': fs * 0.8, fill: '#c0392b', 'font-weight': 600 }).textContent = '^';
+    el('text', { x: hx + fs * 0.75, y: hy, 'font-size': fs, fill: '#c0392b', 'font-weight': 600 }).textContent = '= ' + that.toFixed(2);
+    const lab = w < 0.5 ? A.hat : B.hat, labOp = Math.abs(1 - 2 * w);
+    const up = (A.ny[j] * (1 - w) + B.ny[j] * w) > 0.5;
+    el('text', { x: X(that) + 10, y: up ? yh - fs * 0.6 : yh + fs * 1.5, 'font-size': fs * 0.95, fill: '#c0392b', 'font-weight': 600, opacity: labOp }).textContent = lab;
+
+    for (const b of document.querySelectorAll('.steps button[data-k]')) b.classList.toggle('on', +b.dataset.k === (w < 0.5 ? s.a : s.b));
+  }
+
+  function frame(now) {
+    if (playing) draw(state(now - t0));
+    requestAnimationFrame(frame);
+  }
+  // step buttons: jump to that curve and hold there
+  for (const b of document.querySelectorAll('.steps button[data-k]')) b.onclick = () => {
+    playing = false; pausedAt = +b.dataset.k * (HOLD + MORPH); document.getElementById('play').textContent = '▶ play';
+    draw(state(pausedAt));
+  };
+  document.getElementById('play').onclick = e => {
+    playing = !playing;
+    if (playing) t0 = performance.now() - pausedAt; else pausedAt = performance.now() - t0;
+    e.target.textContent = playing ? '❚❚ pause' : '▶ play';
+  };
+  window.addEventListener('resize', () => { if (!playing) draw(state(pausedAt)); });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
