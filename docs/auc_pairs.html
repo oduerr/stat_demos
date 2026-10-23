@@ -23,8 +23,8 @@
 </head>
 <body>
 <main>
-  <h1>AUC = probability that a random positive is ranked above a random negative</h1>
-  <p class="sub">Every line joins one positive (class 1) with one negative (class 2). Green: the positive has the higher score (ranked correctly). Red: ranked wrong. The share of green lines is the AUC, the same number as the area under the ROC curve. Move the slider (or the blue points) to shift all positives up or down.</p>
+  <h1>AUC = P(s₊ &gt; s₋) + ½ P(s₊ = s₋)</h1>
+  <p class="sub">s₊ is the score of a random example from class 1 (positive), s₋ the score of a random example from class 2 (negative). Every line joins one example of each class. Green: class 1 has the higher score (1), gray: a tie (½), red: class 2 higher (0). The average is the AUC, the same number as the area under the ROC curve. Drag single points, or the slider to move all of class 1. "LA: always sun" gives every example the same score.</p>
   <div id="wrap"><svg id="plot"></svg></div>
 </main>
 <script>
@@ -43,24 +43,33 @@
     }, true);
   }
 
-  // scores: 4 positives, 8 negatives; at shift 0, 4 of 32 pairs are ranked wrong (AUC 0.875)
+  // scores: 4 positives, 8 negatives; at the start 4 of 32 pairs are ranked wrong (AUC 0.875)
   const POS0 = [0.93, 0.82, 0.75, 0.62];
-  const NEG = [0.86, 0.64, 0.60, 0.55, 0.47, 0.33, 0.22, 0.15];
-  const SMIN = -0.9, SMAX = 0.5, LO = SMIN + 0.55, HI = 0.93 + SMAX + 0.05;
-  let shift = 0;
-  const MID = POS0.reduce((a, b) => a + b, 0) / POS0.length;   // the slider knob sits at the mean of class 1
+  const NEG0 = [0.86, 0.64, 0.60, 0.55, 0.47, 0.33, 0.22, 0.15];
+  const LO = -0.35, HI = 1.48, Q = 200;              // scores live on a 0.005 grid, so ties can happen
+  const rnd = v => Math.round(v * Q) / Q;
+  let posB = [...POS0], neg = [...NEG0], shift = 0;  // class 1 score = posB + shift
 
-  const pos = () => POS0.map(p => p + shift);
+  const pos = () => posB.map(p => rnd(p + shift));
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
   function pairs() {
     const out = [];
-    pos().forEach((p, i) => NEG.forEach((n, j) => out.push({ p, n, i, j, v: p > n ? 1 : p === n ? 0.5 : 0 })));
+    pos().forEach((p, i) => neg.forEach((n, j) => out.push({ p, n, i, j, v: p > n ? 1 : p === n ? 0.5 : 0 })));
     return out;
   }
   function rocPoints() {
-    const all = [...pos().map(s => ({ s, y: 1 })), ...NEG.map(s => ({ s, y: 0 }))].sort((a, b) => b.s - a.s);
-    const pts = [[0, 0]]; let tp = 0, fp = 0;
-    for (const d of all) { d.y ? tp++ : fp++; pts.push([fp / NEG.length, tp / POS0.length]); }
+    // tied scores form one block: the ROC moves diagonally through it (area = 1/2 per tied pair)
+    const ps = pos(), ss = [...new Set([...ps, ...neg])].sort((a, b) => b - a), pts = [[0, 0]];
+    for (const t of ss) pts.push([neg.filter(n => n >= t).length / neg.length, ps.filter(p => p >= t).length / ps.length]);
     return pts;
+  }
+  // x offsets for equal scores in one column, so tied points stay visible side by side
+  function spread(scores, cx, step) {
+    const groups = {};
+    scores.forEach((s, i) => (groups[s] = groups[s] || []).push(i));
+    const xs = [];
+    for (const k in groups) groups[k].forEach((i, j) => xs[i] = cx + (j - (groups[k].length - 1) / 2) * step);
+    return xs;
   }
 
   const svg = document.getElementById('plot'), NS = 'http://www.w3.org/2000/svg';
@@ -72,10 +81,9 @@
     const W = svg.clientWidth || 900, H = svg.clientHeight || 400;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
     const fs = Math.max(13, Math.min(19, W / 50));
-    const L = { x0: fs * 3.2, x1: W * 0.50, t: fs * 1.8, b: H - fs * 2.6 };
+    const L = { x0: fs * 3.2, x1: W * 0.46, t: fs * 1.8, b: H - fs * 2.6 };
     const Y = s => L.b - (s - LO) / (HI - LO) * (L.b - L.t);
-    const cx1 = L.x0 + (L.x1 - L.x0) * 0.36, cx2 = L.x0 + (L.x1 - L.x0) * 0.85, sx = L.x0 + (L.x1 - L.x0) * 0.13;
-    geom = { Y, cx1, sx, L, fs };
+    const cx1 = L.x0 + (L.x1 - L.x0) * 0.38, cx2 = L.x0 + (L.x1 - L.x0) * 0.82, sx = L.x0 + (L.x1 - L.x0) * 0.1;
     el('line', { x1: L.x0, x2: L.x0, y1: L.t, y2: L.b, stroke: '#9ca3af' });
     for (const v of [0, 0.5, 1.0]) {
       el('line', { x1: L.x0, x2: L.x1, y1: Y(v), y2: Y(v), stroke: '#eef0f3' });
@@ -84,63 +92,107 @@
     const yl = (L.t + L.b) / 2;
     tx(fs * 0.9, yl, 'score', { 'text-anchor': 'middle', fill: '#374151', transform: `rotate(-90 ${fs * 0.9} ${yl})`, style: `font-size:${fs * 0.8}px` });
 
-    const P = pairs();
+    const ps = pos(), P = pairs();
+    const px = spread(ps, cx1, fs * 1.05), nx = spread(neg, cx2, fs * 1.05);
     for (const q of P) {
-      el('line', { x1: cx1, y1: Y(q.p), x2: cx2, y2: Y(q.n), stroke: q.v === 1 ? '#7cb342' : q.v === 0.5 ? '#9ca3af' : '#c0392b', 'stroke-width': q.v === 1 ? 1.8 : 2.6, opacity: q.v === 1 ? 0.75 : 0.95 });
+      el('line', { x1: px[q.i], y1: Y(q.p), x2: nx[q.j], y2: Y(q.n), stroke: q.v === 1 ? '#7cb342' : q.v === 0.5 ? '#9ca3af' : '#c0392b', 'stroke-width': q.v === 1 ? 1.8 : 2.4, opacity: q.v === 1 ? 0.75 : 0.9 });
     }
-    // drag handle: a band around the blue column
-    const ps = pos();
-    el('rect', { x: cx1 - fs * 1.4, y: Y(Math.max(...ps)) - fs, width: fs * 2.8, height: Y(Math.min(...ps)) - Y(Math.max(...ps)) + 2 * fs, rx: fs, fill: '#0070c0', opacity: 0.07, style: 'cursor: ns-resize' });
-    ps.forEach(s => el('circle', { cx: cx1, cy: Y(s), r: fs * 0.45, fill: '#fff', stroke: '#0070c0', 'stroke-width': 2.8, style: 'cursor: ns-resize' }));
-    NEG.forEach(s => el('circle', { cx: cx2, cy: Y(s), r: fs * 0.45, fill: '#fff', stroke: '#e46c0a', 'stroke-width': 2.5 }));
-    // vertical slider: moves all four blue points at once
-    const ty0 = Y(MID + SMAX), ty1 = Y(MID + SMIN), ky = Y(MID + shift);
-    el('line', { x1: sx, x2: sx, y1: ty0, y2: ty1, stroke: '#cfe0f1', 'stroke-width': fs * 0.6, 'stroke-linecap': 'round', style: 'cursor: ns-resize' });
+    // the gap: once every class-1 score is above every class-2 score, its size no longer matters
+    const gap = Math.min(...ps) - Math.max(...neg);
+    if (gap > 0) {
+      const gx = (cx1 + cx2) / 2 + fs * 0.4, ya = Y(Math.min(...ps)), yb = Y(Math.max(...neg));
+      el('line', { x1: gx, x2: gx, y1: ya, y2: yb, stroke: '#7c3aed', 'stroke-width': 2 });
+      for (const y of [ya, yb]) el('line', { x1: gx - fs * 0.4, x2: gx + fs * 0.4, y1: y, y2: y, stroke: '#7c3aed', 'stroke-width': 2 });
+      tx(gx + fs * 0.6, (ya + yb) / 2 + fs * 0.3, `gap ${gap.toFixed(2)}`, { fill: '#7c3aed', 'font-weight': 600, style: `font-size:${fs * 0.8}px` });
+    }
+    const pts = [];
+    ps.forEach((s, i) => { el('circle', { cx: px[i], cy: Y(s), r: fs * 0.45, fill: '#fff', stroke: '#0070c0', 'stroke-width': 2.8, style: 'cursor: ns-resize' }); pts.push({ x: px[i], y: Y(s), c: 1, i }); });
+    neg.forEach((s, j) => { el('circle', { cx: nx[j], cy: Y(s), r: fs * 0.45, fill: '#fff', stroke: '#e46c0a', 'stroke-width': 2.5, style: 'cursor: ns-resize' }); pts.push({ x: nx[j], y: Y(s), c: 2, i: j }); });
+    // vertical slider: moves all four blue points at once (knob at their mean)
+    const ty0 = Y(HI), ty1 = Y(LO), ky = Y(mean(ps));
+    el('line', { x1: sx, x2: sx, y1: ty0 + fs * 0.6, y2: ty1, stroke: '#cfe0f1', 'stroke-width': fs * 0.6, 'stroke-linecap': 'round', style: 'cursor: ns-resize' });
     el('line', { x1: sx + fs * 0.9, x2: cx1 - fs * 0.7, y1: ky, y2: ky, stroke: '#0070c0', 'stroke-dasharray': '3 4', opacity: 0.6 });
     el('rect', { x: sx - fs * 0.9, y: ky - fs * 0.55, width: fs * 1.8, height: fs * 1.1, rx: fs * 0.3, fill: '#0070c0', style: 'cursor: ns-resize' });
     tx(sx, ky + fs * 0.32, '↕', { 'text-anchor': 'middle', fill: '#fff', 'font-weight': 700, style: `font-size:${fs * 0.85}px; pointer-events:none` });
-    tx(sx, ty0 - fs * 0.7, 'move class 1', { 'text-anchor': 'middle', fill: '#0070c0', 'font-weight': 600, style: `font-size:${fs * 0.8}px` });
-    tx(cx1, L.b + fs * 1.5, 'class 1 (positive)', { 'text-anchor': 'middle', fill: '#0070c0', 'font-weight': 600, style: `font-size:${fs * 0.9}px` });
-    tx(cx2, L.b + fs * 1.5, 'class 2 (negative)', { 'text-anchor': 'middle', fill: '#e46c0a', 'font-weight': 600, style: `font-size:${fs * 0.9}px` });
+    tx(sx, ty0 - fs * 0.1, 'move all', { 'text-anchor': 'middle', fill: '#0070c0', 'font-weight': 600, style: `font-size:${fs * 0.75}px` });
+    tx(cx1, L.b + fs * 1.5, 'examples from class 1', { 'text-anchor': 'middle', fill: '#0070c0', 'font-weight': 600, style: `font-size:${fs * 0.85}px` });
+    tx(cx2 + fs, L.b + fs * 1.5, 'examples from class 2', { 'text-anchor': 'middle', fill: '#e46c0a', 'font-weight': 600, style: `font-size:${fs * 0.85}px` });
 
-    // counter
-    const gAll = P.reduce((a, q) => a + q.v, 0);
-    const C = { x: W * 0.535, y: L.t + fs * 0.6 };
-    tx(C.x, C.y, `${POS0.length} × ${NEG.length} = ${P.length} pairs`, { fill: '#374151', style: `font-size:${fs}px` });
-    tx(C.x, C.y + fs * 1.7, `green / all = ${+gAll.toFixed(1)} / ${P.length}`, { fill: '#2e7d32', 'font-weight': 600, style: `font-size:${fs}px` });
-    tx(C.x, C.y + fs * 3.5, `AUC = ${(gAll / P.length).toFixed(3)}`, { fill: '#1f2937', 'font-weight': 700, style: `font-size:${fs * 1.4}px` });
+    // counter, legend, buttons, message (middle column)
+    const gAll = P.reduce((a, q) => a + q.v, 0), auc = gAll / P.length;
+    const C = { x: W * 0.49, y: L.t + fs * 0.2 }, f = n => C.y + fs * n;
+    tx(C.x, f(0), `${ps.length} × ${neg.length} = ${P.length} pairs`, { fill: '#374151', style: `font-size:${fs * 0.9}px` });
+    tx(C.x, f(1.5), `green + ½ gray = ${+gAll.toFixed(1)}`, { fill: '#2e7d32', 'font-weight': 600, style: `font-size:${fs * 0.9}px` });
+    tx(C.x, f(3.2), `AUC = ${+gAll.toFixed(1)}/${P.length} = ${auc.toFixed(3)}`, { fill: '#1f2937', 'font-weight': 700, style: `font-size:${fs * 1.1}px` });
+    [['#7cb342', 'class 1 higher: 1'], ['#9ca3af', 'tie: ½'], ['#c0392b', 'class 2 higher: 0']].forEach(([c, t], k) => {
+      el('line', { x1: C.x, x2: C.x + fs * 1.4, y1: f(4.6 + k * 1.15) - fs * 0.3, y2: f(4.6 + k * 1.15) - fs * 0.3, stroke: c, 'stroke-width': 3 });
+      tx(C.x + fs * 1.8, f(4.6 + k * 1.15), t, { fill: '#4b5563', style: `font-size:${fs * 0.75}px` });
+    });
+    const btns = [];
+    [['LA: always sun', 'la'], ['reset', 'reset']].forEach(([t, id], k) => {
+      const bx = C.x + k * fs * 7.6, by = f(8.0), bw = k ? fs * 3.6 : fs * 7.0, bh = fs * 1.5;
+      el('rect', { x: bx, y: by, width: bw, height: bh, rx: bh / 2, fill: '#f9fafb', stroke: '#d1d5db', style: 'cursor:pointer' });
+      tx(bx + bw / 2, by + bh * 0.68, t, { 'text-anchor': 'middle', fill: '#1f2937', style: `font-size:${fs * 0.75}px; pointer-events:none` });
+      btns.push({ x: bx, y: by, w: bw, h: bh, id });
+    });
+    let msg = null;
+    if (P.every(q => q.v === 0.5)) msg = ['#4b5563', ['One score for every day:', 'every pair is a tie,', 'so AUC = 0.5 although', 'accuracy is 98.6 %.']];
+    else if (gap > 0) msg = ['#7c3aed', ['AUC = 1 for any gap:', 'it only sees the ranking,', 'not how sure the model is.', 'For that: probabilities.']];
+    if (msg) msg[1].forEach((t, k) => tx(C.x, f(11.0 + k * 1.15), t, { fill: msg[0], 'font-weight': k === 3 ? 700 : 500, style: `font-size:${fs * 0.78}px` }));
 
-    // ROC (bottom right), follows the shift
-    const R = { x1: W - fs * 0.8, b: L.b, t: C.y + fs * 5.6 };
-    const side = Math.min(W * 0.3, R.b - R.t - fs * 1.2), rx0 = R.x1 - side, ry0 = R.b - side;
-    const X = f => rx0 + f * side, Yr = t => R.b - t * side, roc = rocPoints();
-    let d = `M${X(0)} ${Yr(0)}`; roc.forEach(([f, t]) => d += ` L${X(f)} ${Yr(t)}`); d += ` L${X(1)} ${Yr(0)} Z`;
+    // ROC (right)
+    const side = Math.min(W - C.x - fs * 13.5, L.b - L.t - fs * 1.4), R = { x1: W - fs * 0.6, b: L.b };
+    const rx0 = R.x1 - side, ry0 = R.b - side;
+    const X = q => rx0 + q * side, Yr = t => R.b - t * side, roc = rocPoints();
+    let d = `M${X(0)} ${Yr(0)}`; roc.forEach(([a, t]) => d += ` L${X(a)} ${Yr(t)}`); d += ` L${X(1)} ${Yr(0)} Z`;
     el('path', { d, fill: '#7cb342', opacity: 0.22 });
     el('rect', { x: rx0, y: ry0, width: side, height: side, fill: 'none', stroke: '#9ca3af' });
     tx(X(0.5), ry0 - fs * 0.5, 'ROC curve', { 'text-anchor': 'middle', fill: '#374151', 'font-weight': 600, style: `font-size:${fs * 0.85}px` });
     el('line', { x1: X(0), y1: Yr(0), x2: X(1), y2: Yr(1), stroke: '#c7cbd1', 'stroke-dasharray': '4 4' });
-    let pth = ''; roc.forEach(([f, t], k) => pth += (k ? ' L' : 'M') + X(f) + ' ' + Yr(t));
+    let pth = ''; roc.forEach(([a, t], k) => pth += (k ? ' L' : 'M') + X(a) + ' ' + Yr(t));
     el('path', { d: pth, fill: 'none', stroke: '#2e7d32', 'stroke-width': 2.5 });
     tx(X(0.5), R.b + fs * 1.3, 'false positive rate', { 'text-anchor': 'middle', fill: '#6b7280', style: `font-size:${fs * 0.75}px` });
-    tx(rx0 - fs * 0.5, Yr(0.5), 'TPR', { 'text-anchor': 'end', fill: '#6b7280', style: `font-size:${fs * 0.75}px` });
-    tx(X(0.97), Yr(0.06), `area = ${(gAll / P.length).toFixed(3)}`, { 'text-anchor': 'end', fill: '#2e7d32', 'font-weight': 600, style: `font-size:${fs * 0.85}px` });
+    tx(rx0 - fs * 0.4, Yr(0.5), 'TPR', { 'text-anchor': 'middle', fill: '#6b7280', transform: `rotate(-90 ${rx0 - fs * 0.4} ${Yr(0.5)})`, style: `font-size:${fs * 0.75}px` });
+    tx(X(0.97), Yr(0.06), `area = ${auc.toFixed(3)}`, { 'text-anchor': 'end', fill: '#2e7d32', 'font-weight': 600, style: `font-size:${fs * 0.85}px` });
+    geom = { Y, cx1, sx, L, fs, pts, btns };
   }
 
+  // shift class 1 as a whole, keeping all its points on the plot
   function setShift(v) {
-    shift = Math.max(SMIN, Math.min(SMAX, Math.round(v / 0.005) * 0.005));
+    shift = Math.max(LO - Math.min(...posB), Math.min(HI - Math.max(...posB), v));
     draw();
   }
+  const clampS = v => Math.max(LO, Math.min(HI, v));
 
-  // drag the blue points (vertical only)
+  // pointer: buttons, a single point, or the slider / blue column (all of class 1)
   let drag = null;
   svg.addEventListener('pointerdown', e => {
     if (!geom) return;
-    const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * (svg.viewBox.baseVal.width / r.width);
-    if (Math.abs(x - geom.cx1) > geom.fs * 2.5 && Math.abs(x - geom.sx) > geom.fs * 1.8) return;
-    drag = { y: e.clientY, s: shift, k: (HI - LO) / ((geom.L.b - geom.L.t) * r.height / svg.viewBox.baseVal.height) };
+    const r = svg.getBoundingClientRect(), k = svg.viewBox.baseVal.width / r.width;
+    const x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k, g = geom;
+    const b = g.btns.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+    if (b) {
+      if (b.id === 'la') { posB = POS0.map(() => 0.5); neg = NEG0.map(() => 0.5); shift = 0; }
+      else { posB = [...POS0]; neg = [...NEG0]; shift = 0; }
+      draw(); return;
+    }
+    const unit = (HI - LO) / (g.L.b - g.L.t);
+    const hit = g.pts.map(p => ({ p, d: Math.hypot(p.x - x, p.y - y) })).sort((a, b) => a.d - b.d)[0];
+    if (hit && hit.d < g.fs * 0.9) drag = { one: hit.p, y, unit, k };
+    else if (Math.abs(x - g.sx) < g.fs * 1.8 || Math.abs(x - g.cx1) < g.fs * 2.5) drag = { y, s: shift, unit, k };
+    else return;
+    drag.y0 = e.clientY;
+    if (drag.one) drag.v0 = drag.one.c === 1 ? posB[drag.one.i] + shift : neg[drag.one.i];
     svg.setPointerCapture(e.pointerId);
   });
-  svg.addEventListener('pointermove', e => { if (drag) setShift(drag.s - (e.clientY - drag.y) * drag.k); });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dv = -(e.clientY - drag.y0) * drag.k * drag.unit;
+    if (!drag.one) return setShift(drag.s + dv);
+    const v = rnd(clampS(drag.v0 + dv));
+    if (drag.one.c === 1) posB[drag.one.i] = v - shift; else neg[drag.one.i] = v;
+    draw();
+  });
   svg.addEventListener('pointerup', () => { drag = null; });
 
   window.addEventListener('resize', draw);
