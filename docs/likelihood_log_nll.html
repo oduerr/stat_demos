@@ -85,7 +85,8 @@
 
   // timeline: hold, morph, hold, morph, hold, morph back
   const HOLD = 2600, MORPH = 1300, CYCLE = 3 * (HOLD + MORPH);
-  let t0 = performance.now(), playing = true, pausedAt = 0;
+  // ?autoplay=0: start paused on the first curve (e.g. in a slide)
+  let t0 = performance.now(), playing = new URLSearchParams(location.search).get('autoplay') !== '0', pausedAt = 0;
 
   function state(ms) {
     // the first rAF time can lie before t0
@@ -156,6 +157,7 @@
     e.target.textContent = playing ? '❚❚ pause' : '▶ play';
   };
   window.addEventListener('resize', () => { if (!playing) draw(state(pausedAt)); });
+  if (!playing) { document.getElementById('play').textContent = '▶ play'; draw(state(0)); }
   requestAnimationFrame(frame);
 })();
 </script>
