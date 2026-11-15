@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gradient boosting, step by step</title>
+<style>
+  :root { --ink: #1f2937; --muted: #6b7280; --grid: #e5e7eb; --model: #2563eb; --res: #ea580c; --tree: #16a34a; --data: #9ca3af; --bg: #ffffff; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: 100%; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 5px; font-size: 13px; }
+  .bar .sep { width: 10px; }
+  button { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--grid); background: #f9fafb; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  button.on { border-color: var(--model); color: var(--model); background: #eff6ff; font-weight: 600; }
+  button.primary { border-color: var(--res); color: #fff; background: var(--res); font-weight: 600; }
+  label { color: var(--muted); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  input[type=range] { width: 80px; }
+  output { font-variant-numeric: tabular-nums; min-width: 2.2em; color: var(--ink); }
+  .steps { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 2px; font-size: 13px; }
+  .steps span.st { padding: 2px 9px; border-radius: 6px; border: 1px solid var(--grid); color: var(--muted); white-space: nowrap; }
+  .steps span.st.on { border-color: var(--res); color: var(--res); background: #fff7ed; font-weight: 600; }
+  .steps .read { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .steps code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+  #wrap { flex: 1; min-height: 260px; position: relative; }
+  svg { width: 100%; height: 100%; display: block; }
+  text { font-family: inherit; }
+  body.embed main { padding: 2px 4px; max-width: none; }
+  body.embed h1, body.embed .sub { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Gradient boosting, step by step</h1>
+  <p class="sub">The model f(x) sets the parameter of a distribution, the loss is the NLL. Each stage asks every training point in which direction its prediction should move (the negative gradient of its loss), fits a tree to these answers, sets the values in its leaves with the loss and adds the tree to the model. Change the distribution: only the answers of the points change. Click a point to see its own loss curve.</p>
+  <div class="bar">
+    <span id="dists"></span>
+    <span class="sep"></span>
+    <button id="next" class="primary">Next step ▸</button>
+    <button id="play">▶ play</button>
+    <button id="jump" title="run 10 stages at once">+10</button>
+    <button id="jump100" title="run 100 stages at once: watch the model overfit">+100</button>
+    <button id="reset" title="start again with the same data">↺</button>
+    <span class="sep"></span>
+    <label>learning rate <input type="range" id="lr" min="0.1" max="2" step="0.1" /><output id="lrv"></output></label>
+  </div>
+  <div class="steps">
+    <span class="st" data-p="1" title="rᵢ = −∂Lᵢ/∂f(xᵢ): the negative gradient of the loss of point i with respect to its prediction">1 · ask every point for rᵢ</span>
+    <span class="st" data-p="2" title="the squared error on the rᵢ gives the cut">2 · fit a tree to the rᵢ</span>
+    <span class="st" data-p="3" title="in each leaf: the value that makes the loss of its points smallest">3 · set the leaf values</span>
+    <span class="st" data-p="4">4 · add the tree</span>
+    <span class="read" id="read"></span>
+  </div>
+  <div id="wrap"><svg id="plot"></svg></div>
+</main>
+<script>
+(() => {
+  const Q = new URLSearchParams(location.search);
+  if (Q.get('embed') === '1') document.body.classList.add('embed');
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('plot');
+  const C = { ink: '#1f2937', muted: '#6b7280', grid: '#e5e7eb', model: '#2563eb', res: '#ea580c', tree: '#16a34a', data: '#9ca3af' };
+
+  function el(tag, attrs, parent, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    (parent || svg).appendChild(e);
+    return e;
+  }
+
+  // ---------- random numbers (seeded, so every reload shows the same data) ----------
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+  const sig = z => 1 / (1 + Math.exp(-z));
+  const lfact = n => { let s = 0; for (let k = 2; k <= n; k++) s += Math.log(k); return s; };
+  function pois(r, lam) { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= r(); } while (p > L); return k - 1; }
+
+  // ---------- the distributions: mean curve, loss of one point as a function of f, negative gradient ----------
+  const sinData = (r, x) => Math.sin(x) + 0.25 * gauss(r);
+  const DISTS = {
+    gaussian: { label: 'Gaussian', lr: 1, seed: 7, gen: sinData, mean: f => f, loss: (y, f) => 0.5 * (y - f) ** 2 + 0.5 * Math.log(2 * Math.PI), r: (y, f) => y - f,
+      yr: [-1.7, 1.7], fr: [-2, 2], meanText: 'μ(x) = f(x)', rText: 'yᵢ − f(xᵢ)', code: 'res = y - fx', leaf: 'mean of the rᵢ (nothing changes)', arrow: 1 },
+    laplace: { label: 'Laplace', lr: 1, seed: 7, gen: sinData, mean: f => f, loss: (y, f) => Math.abs(y - f) + Math.log(2), r: (y, f) => Math.sign(y - f),
+      yr: [-1.7, 1.7], fr: [-2, 2], meanText: 'μ(x) = f(x)', rText: 'sign(yᵢ − f(xᵢ))', code: 'res = np.sign(y - fx)', leaf: 'median of yᵢ − f(xᵢ) in the leaf', arrow: 0.3 },
+    bernoulli: { label: 'Bernoulli', lr: 1, seed: 11, gen: (r, x) => (r() < sig(3 * Math.sin(2 * x)) ? 1 : 0), mean: sig, loss: (y, f) => Math.log(1 + Math.exp(-f)) + (1 - y) * f, r: (y, f) => y - sig(f),
+      yr: [-0.15, 1.15], fr: [-5, 5], meanText: 'p(x) = sigmoid(f(x))', rText: 'yᵢ − pᵢ', code: 'res = y - sigmoid(fx)', leaf: 'no formula, found numerically', arrow: 1 },
+    poisson: { label: 'Poisson', lr: 1, seed: 5, gen: (r, x) => pois(r, Math.exp(0.3 + Math.sin(x))), mean: Math.exp, loss: (y, f) => Math.exp(f) - y * f + lfact(y), r: (y, f) => y - Math.exp(f),
+      yr: null, fr: [-2, 2.5], meanText: 'λ(x) = exp(f(x))', rText: 'yᵢ − λᵢ', code: 'res = y - np.exp(fx)', leaf: 'log(Σyᵢ / Σλᵢ) in the leaf', arrow: 1 },
+  };
+  const N = 50, XR = [0, 5], FCLAMP = 8, CMAX = 4;
+  const clamp = f => Math.max(-FCLAMP, Math.min(FCLAMP, f));
+
+  // ---------- state ----------
+  const S = {};
+  function init(key) {
+    stopPlay();
+    const D = DISTS[key], r = rng(D.seed);
+    S.dist = key;
+    S.x = Array.from({ length: N }, () => XR[0] + (XR[1] - XR[0]) * r()).sort((a, b) => a - b);
+    S.y = S.x.map(x => D.gen(r, x));
+    S.f = S.x.map(() => 0); S.fOld = S.f.slice();
+    S.stumps = []; S.m = 0; S.phase = 0; S.asked = false; S.tree = null; S.anim = null;
+    S.r = S.x.map((_, i) => D.r(S.y[i], S.f[i]));
+    S.R = 1.15 * Math.max(...S.r.map(Math.abs)); S.ROld = S.R;
+    S.hist = [nll()];
+    let best = 0; S.r.forEach((v, i) => { if (Math.abs(v) > Math.abs(S.r[best]) + 1e-9) best = i; });
+    S.sel = key === 'bernoulli' ? Math.floor(N / 3) : best;
+    S.yr = D.yr || [-0.6, Math.max(...S.y) + 0.8];
+    S.lr = Q.get('lr') && !S.lrTouched ? +Q.get('lr') : D.lr;
+    lrEl.value = S.lr; lrOut.textContent = (+S.lr).toFixed(1);
+    updateUI(); draw(1);
+  }
+  function nll() { const D = DISTS[S.dist]; return S.x.reduce((s, _, i) => s + D.loss(S.y[i], S.f[i]), 0) / N; }
+
+  // a stump (tree with one split) fitted to the values r with the squared error; x is sorted
+  function fitStump(x, r) {
+    const n = x.length, tot = r.reduce((a, b) => a + b, 0);
+    let best = { score: -Infinity, thr: (x[0] + x[n - 1]) / 2, left: tot / n, right: tot / n }, sl = 0;
+    for (let i = 0; i < n - 1; i++) {
+      sl += r[i];
+      if (x[i + 1] === x[i]) continue;
+      const nl = i + 1, nr = n - nl, sr = tot - sl, score = sl * sl / nl + sr * sr / nr;
+      if (score > best.score) best = { score, thr: (x[i] + x[i + 1]) / 2, left: sl / nl, right: sr / nr };
+    }
+    return best;
+  }
+  const treeAt = (t, x) => (x < t.thr ? t.left : t.right);
+  // the value c that makes the loss of the points in one leaf smallest: sum of L(y_i, f(x_i) + c).
+  // Golden-section search (the four losses are convex in f); c is kept inside ±CMAX, because a leaf with only y = 1 would ask for infinity.
+  function bestLeaf(idx) {
+    const D = DISTS[S.dist], g = (Math.sqrt(5) - 1) / 2, L = c => idx.reduce((sum, i) => sum + D.loss(S.y[i], S.f[i] + c), 0);
+    let a = -CMAX, b = CMAX, c1 = b - g * (b - a), c2 = a + g * (b - a), l1 = L(c1), l2 = L(c2);
+    for (let k = 0; k < 60; k++) {
+      if (l1 < l2) { b = c2; c2 = c1; l2 = l1; c1 = b - g * (b - a); l1 = L(c1); }
+      else { a = c1; c1 = c2; l1 = l2; c2 = a + g * (b - a); l2 = L(c2); }
+    }
+    return (a + b) / 2;
+  }
+  function setLeaves(tr) {
+    const li = [], ri = [];
+    S.x.forEach((x, i) => (x < tr.thr ? li : ri).push(i));
+    tr.cl = li.length ? bestLeaf(li) : 0; tr.cr = ri.length ? bestLeaf(ri) : 0;
+    S.R = Math.max(S.R, 1.1 * Math.max(Math.abs(tr.cl), Math.abs(tr.cr)));
+  }
+
+  function step() {
+    if (S.anim) finishAnim();
+    const D = DISTS[S.dist];
+    if (S.phase === 0 || S.phase === 4) {            // 1: ask every point
+      S.r = S.x.map((_, i) => D.r(S.y[i], S.f[i])); S.R = Math.max(S.R, 1.1 * Math.max(...S.r.map(Math.abs))); S.phase = 1;
+    } else if (S.phase === 1) {                      // 2: fit a tree to the answers (the squared error gives the cut)
+      S.tree = fitStump(S.x, S.r); S.phase = 2;
+    } else if (S.phase === 2) {                      // 3: set the leaf values with the loss
+      S.ROld = S.R; setLeaves(S.tree); S.phase = 3;
+    } else {                                         // 4: add the tree to the model
+      S.fOld = S.f.slice();
+      const st = { thr: S.tree.thr, left: S.tree.cl, right: S.tree.cr, lr: S.lr };
+      S.stumps.push(st);
+      S.f = S.f.map((f, i) => clamp(f + S.lr * treeAt(st, S.x[i])));
+      S.m++; S.hist.push(nll()); S.phase = 4;
+    }
+    updateUI(); animate();
+  }
+  function jump(k) {
+    if (S.anim) finishAnim();
+    const D = DISTS[S.dist];
+    for (let j = 0; j < k; j++) {
+      S.r = S.x.map((_, i) => D.r(S.y[i], S.f[i])); S.R = Math.max(S.R, 1.1 * Math.max(...S.r.map(Math.abs)));
+      S.tree = fitStump(S.x, S.r); setLeaves(S.tree);
+      const st = { thr: S.tree.thr, left: S.tree.cl, right: S.tree.cr, lr: S.lr };
+      S.stumps.push(st);
+      S.f = S.f.map((f, i) => clamp(f + S.lr * treeAt(st, S.x[i])));
+      S.m++; S.hist.push(nll());
+    }
+    S.fOld = S.f.slice(); S.phase = 4; S.asked = true;
+    updateUI(); draw(1);
+  }
+
+  // ---------- animation ----------
+  let raf = 0;
+  function animate() {
+    S.anim = { t0: performance.now(), dur: 550 };
+    const tick = now => {
+      if (!S.anim) return;
+      const u = Math.min(1, (now - S.anim.t0) / S.anim.dur), t = u * u * (3 - 2 * u);
+      draw(t);
+      if (u < 1) raf = requestAnimationFrame(tick); else { S.anim = null; if (S.phase === 1) S.asked = true; }
+    };
+    raf = requestAnimationFrame(tick);
+  }
+  function finishAnim() { cancelAnimationFrame(raf); S.anim = null; if (S.phase === 1) S.asked = true; draw(1); }
+
+  // ---------- drawing ----------
+  function ticks(lo, hi, n) {
+    const span = hi - lo, p = Math.pow(10, Math.floor(Math.log10(span / n)));
+    const c = [1, 2, 5, 10].map(k => k * p).find(s => span / s <= n + 1) || 10 * p, out = [];
+    for (let v = Math.ceil(lo / c - 1e-9) * c; v <= hi + 1e-9; v += c) out.push(+v.toFixed(10));
+    return out;
+  }
+  let clipN = 0;
+  function panel(b, xr, yr, o) {
+    const sx = v => b.x0 + (v - xr[0]) / (xr[1] - xr[0]) * (b.x1 - b.x0), sy = v => b.y1 - (v - yr[0]) / (yr[1] - yr[0]) * (b.y1 - b.y0);
+    el('rect', { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0, fill: 'none', stroke: C.grid });
+    for (const v of ticks(yr[0], yr[1], o.ny || 3)) {
+      el('line', { x1: b.x0 - 3, x2: b.x0, y1: sy(v), y2: sy(v), stroke: C.muted });
+      el('text', { x: b.x0 - 6, y: sy(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: C.muted }, null, String(v));
+    }
+    if (o.xticks !== false) for (const v of ticks(xr[0], xr[1], o.nx || 5)) {
+      el('line', { x1: sx(v), x2: sx(v), y1: b.y1, y2: b.y1 + 3, stroke: C.muted });
+      if (o.xlabel && sx(v) > b.x1 - 9 * o.xlabel.length - 8) continue;      // the axis label takes the place of the last tick label
+      el('text', { x: sx(v), y: b.y1 + 14, 'text-anchor': 'middle', 'font-size': 11, fill: C.muted }, null, String(v));
+    }
+    if (o.xlabel) el('text', { x: b.x1, y: b.y1 + 14, 'text-anchor': 'end', 'font-size': 11.5, fill: C.ink, 'font-style': 'italic' }, null, o.xlabel);
+    const t = el('text', { x: b.x0, y: b.y0 - 6, 'font-size': 12.5, fill: C.ink, 'font-weight': 600 }, null, o.title || '');
+    if (o.title2) el('tspan', { fill: o.color2 || C.ink }, t, o.title2);
+    const id = 'clip' + (clipN++);
+    el('rect', { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 }, el('clipPath', { id }, el('defs', {})));
+    return { sx, sy, b, g: el('g', { 'clip-path': `url(#${id})` }) };
+  }
+  function arrow(g, x1, y1, x2, y2, color, w) {
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    if (len < 0.8) return;
+    const h = Math.min(6, len * 0.6), ux = dx / len, uy = dy / len;
+    el('line', { x1, y1, x2: x2 - ux * h * 0.6, y2: y2 - uy * h * 0.6, stroke: color, 'stroke-width': w || 1.6 }, g);
+    el('path', { d: `M${x2},${y2} L${x2 - ux * h - uy * h * 0.5},${y2 - uy * h + ux * h * 0.5} L${x2 - ux * h + uy * h * 0.5},${y2 - uy * h - ux * h * 0.5} Z`, fill: color }, g);
+  }
+  const fmt = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
+
+  let pix = [];
+  function draw(t) {
+    const W = svg.clientWidth, H = svg.clientHeight;
+    if (!W || !H) return;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = ''; clipN = 0;
+    const D = DISTS[S.dist], ph = S.phase, RN = ph === 3 ? S.ROld + t * (S.R - S.ROld) : S.R;   // the residual axis grows while the leaf values are set
+    const fNow = S.x.map((_, i) => (ph === 4 ? S.fOld[i] + t * (S.f[i] - S.fOld[i]) : S.f[i]));
+    const rNow = ph === 4 ? S.x.map((_, i) => D.r(S.y[i], fNow[i])) : S.r;
+    const split = Math.round(W * 0.6), hA = Math.round(H * 0.56);
+
+    // A: data and model
+    const A = panel({ x0: 40, x1: split - 16, y0: 22, y1: hA }, XR, S.yr, { title: 'Data and model: ', title2: D.meanText, color2: C.model, xticks: false });
+    const nst = S.stumps.length, G = 260, pts = [];
+    for (let k = 0; k <= G; k++) {
+      const xg = XR[0] + (XR[1] - XR[0]) * k / G; let f = 0;
+      for (let j = 0; j < nst; j++) f += (ph === 4 && j === nst - 1 ? t : 1) * S.stumps[j].lr * treeAt(S.stumps[j], xg);
+      pts.push(`${A.sx(xg).toFixed(1)},${A.sy(D.mean(clamp(f))).toFixed(1)}`);
+    }
+    pix = S.x.map((x, i) => [A.sx(x), A.sy(S.y[i])]);
+    if (ph >= 1 && ph <= 3) S.x.forEach((x, i) => {
+      const m0 = D.mean(S.f[i]), a = S.r[i] * D.arrow * (ph === 1 ? t : 1);
+      arrow(A.g, A.sx(x), A.sy(m0), A.sx(x), A.sy(m0 + a), C.res, i === S.sel ? 2.4 : 1.5);
+    });
+    el('polyline', { points: pts.join(' '), fill: 'none', stroke: C.model, 'stroke-width': 2.4, 'stroke-linejoin': 'round' }, A.g);
+    S.x.forEach((x, i) => el('circle', { cx: pix[i][0], cy: pix[i][1], r: i === S.sel ? 4.6 : 3, fill: i === S.sel ? C.ink : C.data, stroke: '#fff', 'stroke-width': 0.8 }, A.g));
+    el('circle', { cx: pix[S.sel][0], cy: pix[S.sel][1], r: 8, fill: 'none', stroke: C.ink, 'stroke-width': 1.3 }, A.g);
+
+    // B: the answers of the points (generalized residuals) and the tree fitted to them
+    const B = panel({ x0: 40, x1: split - 16, y0: hA + 24, y1: H - 20 }, XR, [-RN, RN], { title: 'Generalized residuals ', title2: 'rᵢ = ' + D.rText, color2: C.res, xlabel: 'x', ny: 2 });
+    el('line', { x1: B.b.x0, x2: B.b.x1, y1: B.sy(0), y2: B.sy(0), stroke: C.muted, 'stroke-width': 0.8 }, B.g);
+    if (S.asked || ph === 1) {
+      const grow = !S.asked && ph === 1 ? t : 1;
+      S.x.forEach((x, i) => {
+        el('line', { x1: B.sx(x), x2: B.sx(x), y1: B.sy(0), y2: B.sy(rNow[i] * grow), stroke: C.res, 'stroke-width': i === S.sel ? 2.6 : 1.5 }, B.g);
+        el('circle', { cx: B.sx(x), cy: B.sy(rNow[i] * grow), r: i === S.sel ? 3 : 2, fill: C.res }, B.g);
+      });
+    }
+    if (S.tree && (ph === 2 || ph === 3 || (ph === 4 && t < 1))) {
+      const tr = S.tree, xt = Math.max(XR[0], Math.min(XR[1], tr.thr));
+      // phase 2: the leaves hold the mean of the r_i. Phase 3: they move to the best value for the loss (dashed: where they were)
+      const lv = ph === 2 ? [tr.left, tr.right] : ph === 3 ? [tr.left + t * (tr.cl - tr.left), tr.right + t * (tr.cr - tr.right)] : [tr.cl, tr.cr];
+      const path = (a, b) => `M${B.sx(XR[0])},${B.sy(a)} L${B.sx(xt)},${B.sy(a)} L${B.sx(xt)},${B.sy(b)} L${B.sx(XR[1])},${B.sy(b)}`;
+      if (ph === 3) el('path', { d: path(tr.left, tr.right), fill: 'none', stroke: C.tree, 'stroke-width': 1.2, 'stroke-dasharray': '4 3' }, B.g);
+      el('path', { d: path(lv[0], lv[1]), fill: 'none', stroke: C.tree, 'stroke-width': 3, opacity: ph === 2 ? t : ph === 3 ? 1 : 1 - t }, B.g);
+      if (ph !== 4) el('text', { x: B.b.x1, y: B.b.y0 - 6, 'text-anchor': 'end', 'font-size': 12.5, fill: C.tree, 'font-weight': 600, opacity: ph === 2 ? t : 1 }, null, ph === 2 ? '— tree fitted to the rᵢ' : '— leaf values set with the loss');
+    }
+
+    // C: the loss of the marked point as a function of its prediction
+    const fr = D.fr, ys = S.y[S.sel], vals = [];
+    for (let k = 0; k <= 120; k++) vals.push(D.loss(ys, fr[0] + (fr[1] - fr[0]) * k / 120));
+    const lo = Math.min(...vals), hi = Math.min(Math.max(...vals), Math.max(lo + 5, D.loss(ys, 0) + 0.3)), pad = (hi - lo) * 0.08;   // the start (f = 0) stays visible
+    const Cp = panel({ x0: split + 44, x1: W - 8, y0: 22, y1: Math.round(H * 0.46) }, fr, [lo - pad, hi + pad], { title: 'Loss of the marked point: ', title2: '−log p(yᵢ | f)', xlabel: 'f(xᵢ)', ny: 3, nx: 4 });
+    el('polyline', { points: vals.map((v, k) => `${Cp.sx(fr[0] + (fr[1] - fr[0]) * k / 120).toFixed(1)},${Cp.sy(v).toFixed(1)}`).join(' '), fill: 'none', stroke: C.ink, 'stroke-width': 2 }, Cp.g);
+    const fs = Math.max(fr[0], Math.min(fr[1], fNow[S.sel])), Ls = D.loss(ys, fs), rs = D.r(ys, fNow[S.sel]);
+    if (ph >= 1 && ph <= 3) {
+      const d = (fr[1] - fr[0]) * 0.14;                                         // tangent: its slope is −r
+      el('line', { x1: Cp.sx(fs - d), y1: Cp.sy(Ls + rs * d), x2: Cp.sx(fs + d), y2: Cp.sy(Ls - rs * d), stroke: C.res, 'stroke-width': 1.4, 'stroke-dasharray': '4 3' }, Cp.g);
+      const yb = Cp.b.y1 - 12, L = (rs / RN) * 0.3 * (Cp.b.x1 - Cp.b.x0) * (ph === 1 ? t : 1);
+      el('line', { x1: Cp.sx(fs), x2: Cp.sx(fs), y1: Cp.sy(Ls), y2: yb, stroke: C.muted, 'stroke-width': 0.8, 'stroke-dasharray': '2 3' }, Cp.g);
+      arrow(Cp.g, Cp.sx(fs), yb, Cp.sx(fs) + L, yb, C.res, 2.4);
+      el('text', { x: Cp.sx(fs) + (rs >= 0 ? -6 : 6), y: yb + 4, 'text-anchor': rs >= 0 ? 'end' : 'start', 'font-size': 12, fill: C.res, 'font-weight': 600 }, Cp.g, 'rᵢ = ' + fmt(rs, 2));
+    }
+    el('circle', { cx: Cp.sx(fs), cy: Cp.sy(Ls), r: 5, fill: C.ink, stroke: '#fff', 'stroke-width': 1 }, Cp.g);
+
+    // D: the loss of all points over the stages
+    const mNow = ph === 4 ? S.m - 1 + t : S.m, hist = S.hist.slice(0, ph === 4 ? S.m : S.m + 1);
+    if (ph === 4) hist.push(S.hist[S.m - 1] + t * (S.hist[S.m] - S.hist[S.m - 1]));
+    const hl = Math.min(...S.hist), hh = Math.max(...S.hist), hp = Math.max(0.05 * Math.max(Math.abs(hh), 0.2), (hh - hl) * 0.12);
+    const Dp = panel({ x0: split + 44, x1: W - 8, y0: Math.round(H * 0.46) + 44, y1: H - 20 }, [0, Math.max(10, S.m)], [hl - hp, hh + hp], { title: 'Mean NLL of all points', xlabel: 'stage m', ny: 3, nx: 5 });
+    const hx = k => (k === hist.length - 1 ? mNow : k);
+    el('polyline', { points: hist.map((v, k) => `${Dp.sx(hx(k)).toFixed(1)},${Dp.sy(v).toFixed(1)}`).join(' '), fill: 'none', stroke: C.model, 'stroke-width': 2 }, Dp.g);
+    if (hist.length <= 31) hist.forEach((v, k) => el('circle', { cx: Dp.sx(hx(k)), cy: Dp.sy(v), r: 2.6, fill: C.model }, Dp.g));
+    el('circle', { cx: Dp.sx(mNow), cy: Dp.sy(hist[hist.length - 1]), r: 4.2, fill: C.model, stroke: '#fff', 'stroke-width': 1 }, Dp.g);
+  }
+
+  // ---------- controls ----------
+  const lrEl = document.getElementById('lr'), lrOut = document.getElementById('lrv'), playBtn = document.getElementById('play');
+  function updateUI() {
+    document.querySelectorAll('.steps .st').forEach(s => s.classList.toggle('on', +s.dataset.p === S.phase));
+    document.querySelectorAll('#dists button').forEach(b => b.classList.toggle('on', b.dataset.k === S.dist));
+    const D = DISTS[S.dist], tail = S.phase === 3 ? `leaf value: ${D.leaf}` : `<code>${D.code}</code>`;
+    document.getElementById('read').innerHTML = `m = ${S.m} &nbsp;·&nbsp; NLL = ${S.hist[S.m].toFixed(3)} &nbsp;·&nbsp; ${tail}`;
+  }
+  const distBox = document.getElementById('dists');
+  for (const k in DISTS) { const b = document.createElement('button'); b.textContent = DISTS[k].label; b.dataset.k = k; b.style.marginRight = '4px'; b.onclick = () => init(k); distBox.appendChild(b); }
+  let timer = 0;
+  function stopPlay() { clearInterval(timer); timer = 0; if (playBtn) playBtn.textContent = '▶ play'; }
+  document.getElementById('next').onclick = () => { stopPlay(); step(); };
+  playBtn.onclick = () => { if (timer) return stopPlay(); playBtn.textContent = '❚❚ pause'; step(); timer = setInterval(() => (S.m >= 200 ? stopPlay() : step()), 850); };
+  document.getElementById('jump').onclick = () => { stopPlay(); jump(10); };
+  document.getElementById('jump100').onclick = () => { stopPlay(); jump(100); };
+  document.getElementById('reset').onclick = () => init(S.dist);
+  lrEl.oninput = () => { S.lr = +lrEl.value; S.lrTouched = true; lrOut.textContent = S.lr.toFixed(1); };
+  svg.addEventListener('click', ev => {
+    const r = svg.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+    let best = -1, bd = 22;
+    pix.forEach((p, i) => { const d = Math.hypot(p[0] - px, p[1] - py); if (d < bd) { bd = d; best = i; } });
+    if (best >= 0) { S.sel = best; if (!S.anim) draw(1); }
+  });
+  window.addEventListener('resize', () => { if (!S.anim) draw(1); });
+
+  init(DISTS[Q.get('dist')] ? Q.get('dist') : 'gaussian');
+})();
+</script>
+</body>
+</html>
