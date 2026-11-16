@@ -55,6 +55,7 @@
   </div>
   <div id="wrap"><svg id="plot"></svg></div>
 </main>
+<script src="./shared/sync.js"></script>
 <script>
 (() => {
   const Q = new URLSearchParams(location.search);
@@ -166,6 +167,7 @@
       S.m++; S.hist.push(nll()); S.phase = 4;
     }
     updateUI(); animate();
+    LiveSync.send(); // play steps without a click
   }
   function jump(k) {
     if (S.anim) finishAnim();
@@ -332,6 +334,19 @@
     if (best >= 0) { S.sel = best; if (!S.anim) draw(1); }
   });
   window.addEventListener('resize', () => { if (!S.anim) draw(1); });
+
+  // Slide sync (shared/sync.js): the whole state follows the other window, a step there is
+  // animated here too; play runs in the window where it was pressed (here only the label).
+  LiveSync.get = () => { const { anim, ...s } = S; return { s, playing: !!timer }; };
+  LiveSync.set = ({ s, playing }) => {
+    const moved = s.m !== S.m || s.phase !== S.phase;
+    if (S.anim) finishAnim();
+    stopPlay();
+    Object.assign(S, s); S.anim = null;
+    lrEl.value = S.lr; lrOut.textContent = (+S.lr).toFixed(1);
+    if (playing) playBtn.textContent = '❚❚ pause';
+    updateUI(); moved ? animate() : draw(1);
+  };
 
   init(DISTS[Q.get('dist')] ? Q.get('dist') : 'gaussian');
 })();
