@@ -165,6 +165,7 @@
     </div>
   </main>
 
+  <script src="./shared/sync.js"></script>
   <script>
     // ?embed=1 (in a slide): compact layout, and the step keys go to the deck (Slidev presenter
     // addon, message 'slidev-step') instead of switching the mode or moving a slider.
@@ -734,6 +735,14 @@
     });
 
     window.addEventListener('resize', ()=> render());
+
+    // Slide sync (shared/sync.js): the random data and the model follow the other window
+    LiveSync.get = () => ({ xData, yData, dom: [xMin0, xMax0, yMin0, yMax0], state });
+    LiveSync.set = s => {
+      xData = s.xData; yData = s.yData; [xMin0, xMax0, yMin0, yMax0] = s.dom; state = s.state;
+      els.slope.value = state.w; els.intercept.value = state.b; els.sigma.value = state.sigma;
+      setMode(state.mode);
+    };
 
     // Init
     function init(){
